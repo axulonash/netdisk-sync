@@ -10,6 +10,7 @@ import { QuarkClient } from "./native/quarkClient";
 import { getQuarkPluginTransport } from "./native/quarkService";
 import { renderSimpleWebdav } from "./settingsWebdavSimple";
 import { createSettingsSection, getServiceChoices } from "./settingsLayout";
+import { renderBasicSection } from "./settingsSections";
 import { generateBaiduConnectionSettings } from "./native/settingsBaidu";
 import { generateQuarkSettings } from "./native/settingsQuark";
 import { Eye, EyeOff, createElement } from "lucide";
@@ -24,7 +25,6 @@ import {
 } from "obsidian";
 import type { TextComponent } from "obsidian";
 import type {
-  CipherMethodType,
   ConflictActionType,
   EmptyFolderCleanType,
   QRExportType,
@@ -2089,144 +2089,13 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
     //////////////////////////////////////////////////
 
     const basicDiv = containerEl.createEl("div");
-    basicDiv.createEl("h2", { text: t("settings_basic") });
-
-    const passwordSetting = new Setting(basicDiv);
-    const encryptionMethodSetting = new Setting(basicDiv);
-
-    let newPassword = `${this.plugin.settings.password}`;
-    passwordSetting
-      .setName(t("settings_password"))
-      .setDesc(t("settings_password_desc"))
-      .addText((text) => {
-        wrapTextWithPasswordHide(text);
-        text
-          .setPlaceholder("")
-          .setValue(`${this.plugin.settings.password}`)
-          .onChange(async (value) => {
-            newPassword = value.trim();
-          });
-      })
-      .addButton(async (button) => {
-        button.setButtonText(t("confirm"));
-        button.onClick(async () => {
-          new PasswordModal(
-            this.app,
-            this.plugin,
-            newPassword,
-            encryptionMethodSetting
-          ).open();
-        });
-      });
-
-    if (this.plugin.settings.password === "") {
-      encryptionMethodSetting.settingEl.addClass(
-        "settings-encryption-method-hide"
-      );
-    }
-    encryptionMethodSetting
-      .setName(t("settings_encryptionmethod"))
-      .setDesc(stringToFragment(t("settings_encryptionmethod_desc")))
-      .addDropdown((dropdown) => {
-        dropdown
-          .addOption("rclone-base64", t("settings_encryptionmethod_rclone"))
-          .addOption("openssl-base64", t("settings_encryptionmethod_openssl"))
-          .setValue(this.plugin.settings.encryptionMethod ?? "rclone-base64")
-          .onChange(async (val: string) => {
-            this.plugin.settings.encryptionMethod = val as CipherMethodType;
-            await this.plugin.saveSettings();
-            if (this.plugin.settings.password !== "") {
-              new EncryptionMethodModal(this.app, this.plugin).open();
-            }
-          });
-      });
-
-    const automationDiv = basicDiv.createDiv();
-    automationDiv.hidden = advancedOnly || ["baidu", "quark", "aliyun"].includes(this.plugin.settings.serviceType);
-    new Setting(automationDiv)
-      .setName(t("settings_autorun"))
-      .setDesc(t("settings_autorun_desc"))
-      .addDropdown((dropdown) => {
-        dropdown.addOption("-1", t("settings_autorun_notset"));
-        dropdown.addOption(`${1000 * 60 * 1}`, t("settings_autorun_1min"));
-        dropdown.addOption(`${1000 * 60 * 5}`, t("settings_autorun_5min"));
-        dropdown.addOption(`${1000 * 60 * 10}`, t("settings_autorun_10min"));
-        dropdown.addOption(`${1000 * 60 * 30}`, t("settings_autorun_30min"));
-
-        dropdown
-          .setValue(`${this.plugin.settings.autoRunEveryMilliseconds}`)
-          .onChange(async (val: string) => {
-            const realVal = Number.parseInt(val);
-            this.plugin.settings.autoRunEveryMilliseconds = realVal;
-            await this.plugin.saveSettings();
-            if (
-              (realVal === undefined || realVal === null || realVal <= 0) &&
-              this.plugin.autoRunIntervalID !== undefined
-            ) {
-              // clear
-              window.clearInterval(this.plugin.autoRunIntervalID);
-              this.plugin.autoRunIntervalID = undefined;
-            } else if (
-              realVal !== undefined &&
-              realVal !== null &&
-              realVal > 0
-            ) {
-              const intervalID = window.setInterval(() => {
-                console.info("auto run from settings.ts");
-                this.plugin.syncRun("auto");
-              }, realVal);
-              this.plugin.autoRunIntervalID = intervalID;
-              this.plugin.registerInterval(intervalID);
-            }
-          });
-      });
-
-    new Setting(automationDiv)
-      .setName(t("settings_runoncestartup"))
-      .setDesc(t("settings_runoncestartup_desc"))
-      .addDropdown((dropdown) => {
-        dropdown.addOption("-1", t("settings_runoncestartup_notset"));
-        dropdown.addOption(
-          `${1000 * 1 * 1}`,
-          t("settings_runoncestartup_1sec")
-        );
-        dropdown.addOption(
-          `${1000 * 10 * 1}`,
-          t("settings_runoncestartup_10sec")
-        );
-        dropdown.addOption(
-          `${1000 * 30 * 1}`,
-          t("settings_runoncestartup_30sec")
-        );
-        dropdown
-          .setValue(`${this.plugin.settings.initRunAfterMilliseconds}`)
-          .onChange(async (val: string) => {
-            const realVal = Number.parseInt(val);
-            this.plugin.settings.initRunAfterMilliseconds = realVal;
-            await this.plugin.saveSettings();
-          });
-      });
-
-    new Setting(automationDiv)
-      .setName(t("settings_synconsave"))
-      .setDesc(t("settings_synconsave_desc"))
-      .addDropdown((dropdown) => {
-        dropdown.addOption("-1", t("settings_synconsave_disable"));
-        dropdown.addOption("1000", t("settings_synconsave_enable"));
-        // for backward compatibility, we need to use a number representing seconds
-        let syncOnSaveEnabled = false;
-        if ((this.plugin.settings.syncOnSaveAfterMilliseconds ?? -1) > 0) {
-          syncOnSaveEnabled = true;
-        }
-        dropdown
-          .setValue(`${syncOnSaveEnabled ? "1000" : "-1"}`)
-          .onChange(async (val: string) => {
-            this.plugin.settings.syncOnSaveAfterMilliseconds =
-              Number.parseInt(val);
-            await this.plugin.saveSettings();
-            this.plugin.toggleSyncOnSaveIfSet();
-          });
-      });
+    renderBasicSection(basicDiv, this.plugin, {
+      advancedOnly,
+      showAutomation: !["baidu", "quark", "aliyun"].includes(
+        this.plugin.settings.serviceType
+      ),
+      redisplay: () => this.display(),
+    });
 
     //////////////////////////////////////////////////
     // below for advanced settings
