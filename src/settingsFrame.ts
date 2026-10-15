@@ -1,5 +1,7 @@
 import type { SUPPORTED_SERVICES_TYPE } from "./baseTypes";
 import { createSettingsSection } from "./settingsLayout";
+import { createSyncProgress } from "./syncProgressUi";
+import { createSyncControls } from "./syncControlsUi";
 import type RemotelySavePlugin from "./main";
 
 export type ConnectionState = "idle" | "testing" | "success" | "failure";
@@ -86,6 +88,14 @@ export function createSettingsFrame(
     root.append(warning);
   }
   const progressHost = el("div");
+  const progressStatus = el("p", plugin.syncUiStatus, "rsnext-status");
+  progressStatus.setAttribute("role", "status");
+  progressStatus.setAttribute("aria-live", "polite");
+  const sync = el("button", "立即同步", "mod-cta");
+  sync.type = "button";
+  progressHost.append(progressStatus, sync);
+  const updateProgress = createSyncProgress(progressStatus, () => plugin.syncUiActivity);
+  const updateSyncControls = createSyncControls(sync, plugin);
   root.append(progressHost);
 
   const sections = {
@@ -100,6 +110,21 @@ export function createSettingsFrame(
   const listeners: ((s: SUPPORTED_SERVICES_TYPE) => void)[] = [
     opts.onServiceChange,
   ];
+
+  const updateProgressRow = () => {
+    progressStatus.textContent = plugin.syncUiStatus;
+    updateProgress();
+    updateSyncControls();
+  };
+  sync.onclick = () => {
+    if (disposed) return;
+    void plugin.syncRun("manual").catch(() => {});
+  };
+  updateProgressRow();
+  const unsubscribeProgress = plugin.onSyncUiUpdate(() => {
+    if (disposed) return;
+    updateProgressRow();
+  });
 
   const setStatus = (state: ConnectionState, text: string) => {
     light.dataset.state = state;
@@ -145,6 +170,7 @@ export function createSettingsFrame(
       disposed = true;
       tester = null;
       listeners.length = 0;
+      unsubscribeProgress();
       containerEl.replaceChildren();
     },
   };

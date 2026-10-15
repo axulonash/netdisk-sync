@@ -10,7 +10,19 @@ function fixture(
   const dom = new JSDOM("<main></main>");
   const container = dom.window.document.querySelector("main")!;
   const changes: string[] = [];
-  const plugin: any = { settings: { serviceType: "webdav" } };
+  const uiListeners: (() => void)[] = [];
+  const plugin: any = {
+    settings: { serviceType: "webdav" },
+    syncUiStatus: "尚未同步",
+    syncRun: () => Promise.resolve(),
+    onSyncUiUpdate: (cb: () => void) => {
+      uiListeners.push(cb);
+      return () => {
+        const i = uiListeners.indexOf(cb);
+        if (i >= 0) uiListeners.splice(i, 1);
+      };
+    },
+  };
   const frame = createSettingsFrame(container, plugin, {
     desktop: opts.desktop ?? true,
     unsupported: opts.unsupported ?? false,
@@ -23,7 +35,19 @@ function fixture(
   )!;
   const fire = (node: HTMLElement, type: string) =>
     node.dispatchEvent(new dom.window.Event(type));
-  return { dom, container, frame, select, light, button, changes, fire };
+  return {
+    dom,
+    container,
+    frame,
+    select,
+    light,
+    button,
+    changes,
+    fire,
+    plugin,
+    uiListeners,
+    fireUi: () => uiListeners.slice().forEach((cb) => cb()),
+  };
 }
 
 describe("Settings frame skeleton", () => {
@@ -88,5 +112,55 @@ describe("Settings frame skeleton", () => {
     f.frame.cleanup();
     assert.equal(f.container.childNodes.length, 0);
     assert.doesNotThrow(() => f.fire(f.select, "change"));
+  });
+});
+
+describe("进度行", () => {
+  it("renders the progress meter and manual sync button inside progressHost", () => {
+    const { frame } = fixture();
+    assert.ok(frame.progressHost.querySelector("progress"));
+    const sync = Array.from(frame.progressHost.querySelectorAll("button")).find(
+      (b) => b.textContent === "立即同步"
+    );
+    assert.ok(sync);
+  });
+
+  it("reflects the activity snapshot after an update notification", () => {
+    const f = fixture();
+    f.plugin.syncUiStatus = "正在同步…";
+    f.plugin.syncUiActivity = {
+      progress: {
+        phase: "syncing",
+        completed: 2,
+        failed: 0,
+        unexecuted: 0,
+        plan: {
+          total: 5,
+          upload: 5,
+          download: 0,
+          delete: 0,
+          createFolder: 0,
+          conflicts: 0,
+          bytes: 0,
+        },
+        timings: {},
+      },
+    };
+    f.fireUi();
+    const status = f.frame.progressHost.querySelector(".rsnext-status")!;
+    const meter = f.frame.progressHost.querySelector("progress")!;
+    assert.equal(status.textContent, "正在同步…");
+    assert.equal(meter.value, 2);
+    assert.equal(meter.max, 5);
+  });
+
+  it("detaches its listener and stops updating on cleanup", () => {
+    const f = fixture();
+    const cb = f.uiListeners[0];
+    assert.ok(cb);
+    f.frame.cleanup();
+    assert.equal(f.uiListeners.length, 0);
+    f.plugin.syncUiStatus = "同步中";
+    assert.doesNotThrow(() => cb());
   });
 });
