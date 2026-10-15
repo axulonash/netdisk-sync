@@ -4,6 +4,8 @@ import {
   openInlineExclusive,
   renderAdvancedSection,
   renderBasicSection,
+  renderDebugSection,
+  renderImportExportSection,
 } from "../src/settingsSections";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -206,6 +208,10 @@ function advancedFixture(
     redisplay: () => {
       calls.push("redisplay");
     },
+    advancedOnly: opts.advancedOnly === true,
+    renderClearDupFiles: opts.renderClearDupFiles as
+      | ((el: HTMLElement) => void)
+      | undefined,
   });
   const rows = Array.from(host.querySelectorAll(".rsnext-row")) as HTMLElement[];
   const rowFor = (key: string) =>
@@ -304,5 +310,206 @@ describe("renderAdvancedSection", () => {
     // opening the advanced inline block closed the password one
     assert.equal(password.querySelector("input[type=password]"), null);
     assert.ok(configDir.textContent!.includes("modal_syncconfig_attn"));
+  });
+
+  it("absorbs the remaining advanced rows for the single page", () => {
+    const f = advancedFixture({}, {
+      renderClearDupFiles: (el: HTMLElement) => el.append("CLEARDUP"),
+    });
+    for (const key of [
+      "settings_skiplargefiles",
+      "settings_enablestatusbar_info",
+      "settings_resetstatusbar_time",
+      "settings_ignorepaths",
+      "settings_configdir",
+      "settings_onlyallowpaths",
+      "settings_concurrency",
+      "settings_syncunderscore",
+      "settings_bookmarks",
+      "settings_deletetowhere",
+      "settings_conflictaction",
+      "settings_protectmodifypercentage",
+      "settings_protectmodifypercentage_customfield",
+    ]) {
+      assert.ok(f.rowFor(key), `missing row ${key}`);
+    }
+    assert.ok(f.host.textContent!.includes("CLEARDUP"));
+  });
+
+  it("saves the parsed allowed-paths list", async () => {
+    const f = advancedFixture({ onlyAllowPaths: ["a"] });
+    const ta = f
+      .rowFor("settings_onlyallowpaths")!
+      .querySelector("textarea") as HTMLTextAreaElement;
+    assert.equal(ta.value, "a");
+    ta.value = "a\nb";
+    ta.dispatchEvent(new f.dom.window.Event("input"));
+    await tick();
+    assert.deepEqual(f.plugin.settings.onlyAllowPaths, ["a", "b"]);
+    assert.deepEqual(f.calls, ["save"]);
+  });
+
+  it("shows the status-bar rows on desktop and the mobile row on mobile", () => {
+    const desktop = advancedFixture({}, { desktop: true });
+    assert.ok(desktop.rowFor("settings_enablestatusbar_info"));
+    assert.ok(desktop.rowFor("settings_resetstatusbar_time"));
+    assert.equal(desktop.rowFor("settings_enablemobilestatusbar"), undefined);
+    const mobile = advancedFixture({}, { desktop: false });
+    assert.equal(mobile.rowFor("settings_enablestatusbar_info"), undefined);
+    assert.ok(mobile.rowFor("settings_enablemobilestatusbar"));
+  });
+
+  it("hides the conflict-action row in advanced-only mode", () => {
+    const f = advancedFixture({}, { advancedOnly: true });
+    assert.ok(f.rowFor("settings_conflictaction")!.hidden);
+    assert.ok(!advancedFixture().rowFor("settings_conflictaction")!.hidden);
+  });
+});
+
+function importExportFixture() {
+  const dom = new JSDOM("<div id='host'></div>");
+  const host = dom.window.document.getElementById("host")!;
+  const plugin: any = {
+    settings: { serviceType: "webdav" },
+    app: { vault: { getName: () => "notes", configDir: ".obsidian" } },
+    manifest: { version: "1.0.0" },
+    i18n: { t: (key: string) => key },
+    saveSettings: async () => {},
+  };
+  renderImportExportSection(host, plugin);
+  const rows = Array.from(host.querySelectorAll(".rsnext-row")) as HTMLElement[];
+  const rowFor = (key: string) =>
+    rows.find((r) => r.querySelector("label")?.textContent === key);
+  const buttonIn = (row: HTMLElement, text: string) =>
+    Array.from(row.querySelectorAll("button")).find(
+      (b) => b.textContent === text
+    );
+  return { dom, host, plugin, rows, rowFor, buttonIn };
+}
+
+describe("renderImportExportSection", () => {
+  it("renders the import/export rows with only the native-service QR buttons", () => {
+    const f = importExportFixture();
+    assert.ok(f.rowFor("settings_export"));
+    assert.ok(f.rowFor("settings_import"));
+    const text = f.host.textContent!;
+    assert.ok(text.includes("settings_export_basic_and_advanced_button"));
+    assert.ok(text.includes("settings_export_webdav_button"));
+    assert.ok(text.includes("导出百度网盘部分"));
+    assert.ok(text.includes("导出夸克网盘部分"));
+    assert.ok(text.includes("导出阿里云盘部分"));
+    for (const gone of [
+      "settings_export_dropbox_button",
+      "settings_export_onedrive_button",
+      "settings_export_onedrivefull_button",
+      "settings_export_s3_button",
+      "settings_export_webdis_button",
+      "settings_export_googledrive_button",
+      "settings_export_box_button",
+      "settings_export_pcloud_button",
+      "settings_export_yandexdisk_button",
+      "settings_export_koofr_button",
+      "settings_export_azureblobstorage_button",
+    ]) {
+      assert.ok(!text.includes(gone), `should not render ${gone}`);
+    }
+  });
+
+  it("opens an inline QR placeholder when an export button is clicked", () => {
+    const f = importExportFixture();
+    const exportRow = f.rowFor("settings_export")!;
+    f.buttonIn(exportRow, "settings_export_webdav_button")!.click();
+    assert.ok(exportRow.textContent!.includes("modal_qr_shortdesc"));
+    assert.ok(exportRow.querySelector("img.qrcode-img"));
+  });
+
+  it("keeps only one inline editor open across basic and import/export", () => {
+    const dom = new JSDOM("<div id='basic'></div><div id='ie'></div>");
+    const basic = dom.window.document.getElementById("basic")!;
+    const ie = dom.window.document.getElementById("ie")!;
+    const plugin: any = {
+      settings: { serviceType: "webdav" },
+      app: { vault: { getName: () => "notes", configDir: ".obsidian" } },
+      manifest: { version: "1.0.0" },
+      i18n: { t: (key: string) => key },
+      saveSettings: async () => {},
+    };
+    renderBasicSection(basic, plugin, {
+      advancedOnly: false,
+      showAutomation: true,
+      redisplay: () => {},
+    });
+    renderImportExportSection(ie, plugin);
+    const rowIn = (root: HTMLElement, key: string) =>
+      Array.from(root.querySelectorAll(".rsnext-row")).find(
+        (r) => r.querySelector("label")?.textContent === key
+      ) as HTMLElement;
+    const password = rowIn(basic, "settings_password");
+    Array.from(password.querySelectorAll("button"))
+      .find((b) => b.textContent === "修改")!
+      .click();
+    assert.ok(password.querySelector("input[type=password]"));
+
+    const exportRow = rowIn(ie, "settings_export");
+    Array.from(exportRow.querySelectorAll("button"))
+      .find((b) => b.textContent === "settings_export_webdav_button")!
+      .click();
+    assert.equal(password.querySelector("input[type=password]"), null);
+    assert.ok(exportRow.querySelector("img.qrcode-img"));
+  });
+});
+
+function debugFixture(settings: Record<string, unknown> = {}) {
+  const dom = new JSDOM("<div id='host'></div>");
+  const host = dom.window.document.getElementById("host")!;
+  const plugin: any = {
+    settings: {
+      currLogLevel: "info",
+      obfuscateSettingFile: false,
+      ...settings,
+    },
+    app: { vault: { getName: () => "notes", configDir: ".obsidian" } },
+    manifest: { version: "1.0.0", name: "remotely-save-next" },
+    db: {},
+    vaultRandomID: "vault",
+    i18n: { t: (key: string) => key },
+    loadData: async () => ({}),
+    saveSettings: async () => {},
+    getVaultBasePath: () => "/vault",
+    unload: () => {},
+  };
+  renderDebugSection(host, plugin);
+  const rows = Array.from(host.querySelectorAll(".rsnext-row")) as HTMLElement[];
+  const rowFor = (key: string) =>
+    rows.find((r) => r.querySelector("label")?.textContent === key);
+  const buttonIn = (row: HTMLElement, text: string) =>
+    Array.from(row.querySelectorAll("button")).find(
+      (b) => b.textContent === text
+    );
+  return { dom, host, plugin, rows, rowFor, buttonIn };
+}
+
+describe("renderDebugSection", () => {
+  it("renders the debug rows including the reset-cache action", () => {
+    const f = debugFixture();
+    for (const key of [
+      "settings_debuglevel",
+      "settings_outputsettingsconsole",
+      "settings_obfuscatesettingfile",
+      "settings_viewconsolelog",
+      "settings_syncplans",
+      "settings_delsyncplans",
+      "settings_delprevsync",
+      "settings_profiler_results",
+      "settings_profiler_enableprofiler",
+      "settings_profiler_enabledebugprint",
+      "settings_profiler_recordsize",
+      "settings_outputbasepathvaultid",
+      "settings_resetcache",
+    ]) {
+      assert.ok(f.rowFor(key), `missing row ${key}`);
+    }
+    assert.ok(f.buttonIn(f.rowFor("settings_resetcache")!, "settings_resetcache_button"));
+    assert.ok(f.buttonIn(f.rowFor("settings_syncplans")!, "settings_syncplans_button_all"));
   });
 });
