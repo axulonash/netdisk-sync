@@ -4,6 +4,13 @@ import type RemotelySavePlugin from "./main";
 
 type CloseInline = () => void;
 
+// Inlined from lucide Eye/EyeOff so this module keeps its "no runtime obsidian
+// import" property (settings.ts getEyesElements/wrapTextWithPasswordHide pull it).
+const EYE_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>';
+
 // Only one inline editor is open across the whole settings page; opening a new
 // one closes (and empties) the previous host first.
 let openInline: { host: HTMLElement; close: CloseInline | undefined } | undefined;
@@ -19,8 +26,9 @@ export function openInlineExclusive(
 
 /**
  * Native "基本" section shared by the legacy tab (single source of truth until
- * renderLegacy is removed). The password confirm persists before redisplay so
- * the re-rendered encryption-method visibility reflects the new password.
+ * renderLegacy is removed). The password block carries the legacy PasswordModal
+ * copy (shortdesc + attn1-5 + second confirm + saved notice) and the encryption
+ * block carries the legacy EncryptionMethodModal copy, all inline: no modals.
  */
 export function renderBasicSection(
   el: HTMLElement,
@@ -68,7 +76,41 @@ export function renderBasicSection(
     return { box, inline };
   };
 
-  // password row: a 修改 button opens an inline input + 确认 block
+  const eyeToggle = (input: HTMLInputElement) => {
+    const eye = node("button", "", "rsnext-eye");
+    eye.type = "button";
+    eye.innerHTML = EYE_OFF_SVG;
+    eye.setAttribute("aria-label", "显示密码");
+    eye.onclick = () => {
+      const isText = input.getAttribute("type") === "text";
+      eye.innerHTML = isText ? EYE_OFF_SVG : EYE_SVG;
+      eye.setAttribute("aria-label", isText ? "显示密码" : "隐藏密码");
+      input.setAttribute("type", isText ? "password" : "text");
+      input.focus();
+    };
+    return eye;
+  };
+
+  const passwordWarning = () => {
+    const box = node("div", "", "rsnext-inline-notice");
+    for (const line of t("modal_password_shortdesc").split("\n")) {
+      box.append(node("p", line));
+    }
+    (
+      [
+        "modal_password_attn1",
+        "modal_password_attn2",
+        "modal_password_attn3",
+        "modal_password_attn4",
+        "modal_password_attn5",
+      ] as TransItemType[]
+    ).forEach((key, idx) =>
+      box.append(node("p", t(key), idx < 3 ? "password-disclaimer" : ""))
+    );
+    return box;
+  };
+
+  // password row: a 修改 button opens an inline input + warnings + two-step confirm
   let newPassword = `${plugin.settings.password}`;
   const editPassword = node("button", "修改");
   const password = row(
@@ -85,14 +127,32 @@ export function renderBasicSection(
       input.oninput = () => {
         newPassword = input.value.trim();
       };
+      const warnings = passwordWarning();
+      const notice = node("p", "", "rsnext-inline-notice");
+      notice.hidden = true;
       const confirm = node("button", "确认");
-      confirm.onclick = async () => {
-        plugin.settings.password = newPassword;
-        // persist first: redisplay re-evaluates dependent encryption visibility
-        await plugin.saveSettings();
-        opts.redisplay();
+      const second = node(
+        "button",
+        t("modal_password_secondconfirm"),
+        "password-second-confirm"
+      );
+      second.hidden = true;
+      confirm.onclick = () => {
+        confirm.hidden = true;
+        second.hidden = false;
       };
-      host.append(input, confirm);
+      second.onclick = async () => {
+        plugin.settings.password = newPassword;
+        // persist first: the dependent encryption-method visibility changes after
+        await plugin.saveSettings();
+        encryption.box.classList.toggle(
+          "settings-encryption-method-hide",
+          newPassword === ""
+        );
+        notice.textContent = t("modal_password_notice");
+        notice.hidden = false;
+      };
+      host.append(input, eyeToggle(input), warnings, notice, confirm, second);
       input.focus();
     });
 
@@ -109,6 +169,23 @@ export function renderBasicSection(
   editEncryption.onclick = () =>
     openInlineExclusive(encryption.inline, (host) => {
       const current = plugin.settings.encryptionMethod ?? "rclone-base64";
+      let pending: CipherMethodType = current;
+      // legacy EncryptionMethodModal copy, surfaced inline only when a password
+      // is set (changing the method then risks orphaning remote files)
+      const warning = node("div", "", "rsnext-inline-notice");
+      warning.hidden = true;
+      warning.append(node("h3", t("modal_encryptionmethod_title")));
+      for (const line of t("modal_encryptionmethod_shortdesc").split("\n")) {
+        const para = node("p");
+        para.append(fragment(line));
+        warning.append(para);
+      }
+      const confirm = node("button", "确认");
+      confirm.hidden = true;
+      const commit = async () => {
+        plugin.settings.encryptionMethod = pending;
+        await plugin.saveSettings();
+      };
       for (const [value, key] of [
         ["rclone-base64", "settings_encryptionmethod_rclone"],
         ["openssl-base64", "settings_encryptionmethod_openssl"],
@@ -120,12 +197,23 @@ export function renderBasicSection(
         radio.value = value;
         radio.checked = value === current;
         radio.onchange = async () => {
-          plugin.settings.encryptionMethod = value;
-          await plugin.saveSettings();
+          pending = value;
+          if (plugin.settings.password === "") {
+            await commit();
+            return;
+          }
+          warning.hidden = false;
+          confirm.hidden = false;
         };
         label.append(radio, doc.createTextNode(t(key)));
         host.append(label);
       }
+      confirm.onclick = async () => {
+        await commit();
+        warning.hidden = true;
+        confirm.hidden = true;
+      };
+      host.append(warning, confirm);
     });
 
   if (opts.advancedOnly || !opts.showAutomation) return;
