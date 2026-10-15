@@ -21,6 +21,9 @@ export function createSyncNotice(
   let element: HTMLElement | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let destroyed = false;
+  // Stale terminal activity stays on the plugin until the next sync, so remember
+  // which one was already shown and dismissed to avoid re-popping on unrelated UI updates.
+  let dismissedActivity: SyncActivity | undefined;
 
   const remove = () => {
     if (timer !== undefined) {
@@ -36,6 +39,7 @@ export function createSyncNotice(
     const activity = plugin.syncUiActivity;
     const progress = activity?.progress;
     if (!activity || !progress || !VISIBLE_TRIGGERS.has(activity.trigger)) return;
+    if (activity === dismissedActivity) return;
     if (!element) {
       element = document.createElement("div");
       element.className = "rsnext-sync-notice";
@@ -54,10 +58,12 @@ export function createSyncNotice(
       document.body.appendChild(element);
     }
     if (progress.phase === "finished" || TERMINAL_STATUS.has(activity.status)) {
+      dismissedActivity = activity;
       element.textContent = RESULT_TEXT[activity.status] ?? "同步完成";
       if (timer === undefined) timer = setTimeout(remove, dismissMs);
       return;
     }
+    dismissedActivity = undefined;
     const label = document.createElement("div");
     label.textContent = progressStatus(progress);
     const meter = document.createElement("progress");

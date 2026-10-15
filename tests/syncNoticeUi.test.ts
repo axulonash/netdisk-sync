@@ -83,6 +83,33 @@ describe("floating sync notice", () => {
     notice.destroy();
   });
 
+  it("does not re-pop a dismissed terminal notice on unrelated updates, but shows a new sync", async () => {
+    const { plugin, fire } = fixture();
+    const notice = createSyncNotice(plugin, { dismissMs: 5 });
+    const finished = {
+      trigger: "manual",
+      status: "success",
+      progress: { phase: "finished", completed: 2, failed: 0, unexecuted: 0 },
+    };
+    plugin.syncUiActivity = finished;
+    fire();
+    assert.ok(document.querySelector(".rsnext-sync-notice"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(document.querySelector(".rsnext-sync-notice"), null);
+    // Unrelated UI refresh (e.g. "test connection") re-fires the callback with the same record.
+    fire();
+    assert.equal(document.querySelector(".rsnext-sync-notice"), null);
+    // A real new sync uses a different activity object and must show again.
+    plugin.syncUiActivity = {
+      trigger: "manual",
+      status: "running",
+      progress: { phase: "syncing", plan: { total: 3 }, completed: 1 },
+    };
+    fire();
+    assert.ok(document.querySelector(".rsnext-sync-notice"));
+    notice.destroy();
+  });
+
   it("removes the notice on destroy and ignores later updates", () => {
     const { plugin, fire } = fixture();
     const notice = createSyncNotice(plugin);
