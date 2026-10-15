@@ -1,3 +1,7 @@
+import {createBaiduWebSyncClient} from './native/baiduWebService';
+import type {BaiduWebProbeTransport} from './native/baiduWebProbe';
+import { createAliyunSyncClient } from "./native/aliyunService";
+import { AliyunError, type AliyunTransport } from "./native/aliyunTransport";
 import { FakeFsAzureBlobStorage } from "../pro/src/fsAzureBlobStorage";
 import { FakeFsBox } from "../pro/src/fsBox";
 import { FakeFsGoogleDrive } from "../pro/src/fsGoogleDrive";
@@ -12,6 +16,11 @@ import { FakeFsOnedrive } from "./fsOnedrive";
 import { FakeFsS3 } from "./fsS3";
 import { FakeFsWebdav } from "./fsWebdav";
 import { FakeFsWebdis } from "./fsWebdis";
+import { createBaiduSyncClient } from "./native/baiduService";
+import type { BaiduConnection } from "./native/baiduConnection";
+import { BaiduProfileError } from "./native/baiduProfile";
+import { createQuarkSyncClient } from "./native/quarkService";
+import { QuarkError, type QuarkTransport } from "./native/quarkTransport";
 
 /**
  * To avoid circular dependency, we need a new file here.
@@ -19,9 +28,26 @@ import { FakeFsWebdis } from "./fsWebdis";
 export function getClient(
   settings: RemotelySavePluginSettings,
   vaultName: string,
-  saveUpdatedConfigFunc: () => Promise<any>
+  saveUpdatedConfigFunc: () => Promise<any>,
+  native?: {
+    baiduConnection?: BaiduConnection;
+    baiduWebTransport?: BaiduWebProbeTransport;
+    aliyunTransport?: AliyunTransport;
+    quarkTransport?: QuarkTransport;
+    getSettings: () => RemotelySavePluginSettings;
+  }
 ): FakeFs {
   switch (settings.serviceType) {
+    case "baidu":
+      if(native?.baiduWebTransport)return createBaiduWebSyncClient(native.getSettings,native.baiduWebTransport);
+      if (!native?.baiduConnection) throw new BaiduProfileError("desktop_connection_required");
+      return createBaiduSyncClient(native.baiduConnection, native.getSettings);
+    case "aliyun":
+      if (!native?.aliyunTransport) throw new AliyunError("desktop_required");
+      return createAliyunSyncClient(native.getSettings, native.aliyunTransport, saveUpdatedConfigFunc);
+    case "quark":
+      if (!native?.quarkTransport) throw new QuarkError("desktop_required");
+      return createQuarkSyncClient(native.getSettings, native.quarkTransport);
     case "s3":
       return new FakeFsS3(settings.s3);
     case "webdav":

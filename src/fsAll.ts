@@ -4,6 +4,12 @@ import type { Entity } from "./baseTypes";
 
 export abstract class FakeFs {
   abstract kind: string;
+  beforeOperation?: () => Promise<void>;
+  operationRevision?: () => number;
+  onScanProgress?: (files: number, folders: number) => void;
+  // Cached metadata is only valid when readFile can enforce its version.
+  statForRead?: (key: string) => Promise<Entity>;
+  validatePlan?: (key: string, expected: Entity | undefined) => Promise<void>;
   abstract walk(): Promise<Entity[]>;
   abstract walkPartial(): Promise<Entity[]>;
   abstract stat(key: string): Promise<Entity>;
@@ -18,10 +24,13 @@ export abstract class FakeFs {
   abstract rename(key1: string, key2: string): Promise<void>;
   abstract rm(key: string): Promise<void>;
   abstract checkConnect(callbackFunc?: any): Promise<boolean>;
+  connectTestCleanupRequired = false;
   async checkConnectCommonOps(callbackFunc?: any) {
+    const folderName = `rs-test-folder-${nanoid()}/`;
+    this.connectTestCleanupRequired = false;
     try {
       console.info(`check connect: create folder`);
-      const folderName = `rs-test-folder-${nanoid()}/`;
+      this.connectTestCleanupRequired = true;
       await this.mkdir(folderName);
       // await delay(3000);
 
@@ -52,13 +61,19 @@ export abstract class FakeFs {
 
       console.info(`check connect: delete folder`);
       await this.rm(folderName);
+      this.connectTestCleanupRequired = false;
       // await delay(3000);
 
       return true;
     } catch (err) {
-      console.error(err);
+      console.warn("Connection probe failed; cleanup will be attempted.");
       callbackFunc?.(err);
       return false;
+    } finally {
+      if(this.connectTestCleanupRequired) {
+        try {await this.rm(folderName);this.connectTestCleanupRequired=false;}
+        catch { /* Expose possible residue without replacing the original error. */ }
+      }
     }
   }
   abstract getUserDisplayName(): Promise<string>;

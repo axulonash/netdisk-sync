@@ -1,7 +1,20 @@
+import {getBaiduWebPluginTransport} from './native/baiduWebService';
+import {baiduWebProfile,baiduWebBinding,assertBaiduWebPlan,skipBaiduEmptyFiles} from './native/baiduWebSync';
+import {BaiduWebProbeError} from './native/baiduWebProbe';
+import {TransferSpeed,observeTransferBytes} from "./transferSpeed";
+import { closeWebdavHttpConnections } from "./native/webdavDesktopTransport";
+import { migrateWebdavDirectory } from "./webdavDirectory";
+import { SyncControl } from "./syncControl";
+import { getAliyunProfileId } from "./native/aliyunAuth";
+import { getAliyunPluginTransport } from "./native/aliyunService";
+import { AliyunError } from "./native/aliyunTransport";
+import { createSnapshotSaver } from "./syncSettingsSnapshot";
+import { DEFAULT_SERVICE_TYPE } from "./settingsLayout";
+import { skipUnsupportedEmptyUploads } from "./syncProgress";
 // biome-ignore lint/suspicious/noShadowRestrictedNames: <explanation>
 import AggregateError from "aggregate-error";
 import cloneDeep from "lodash/cloneDeep";
-import throttle from "lodash/throttle";
+import debounce from "lodash/debounce";
 import { FileText, RefreshCcw, RotateCcw, createElement } from "lucide";
 import {
   Events,
@@ -91,7 +104,7 @@ import {
   setConfigBySuccessfullAuthInplace as setConfigBySuccessfullAuthInplaceOnedrive,
 } from "./fsOnedrive";
 import { DEFAULT_S3_CONFIG } from "./fsS3";
-import { DEFAULT_WEBDAV_CONFIG } from "./fsWebdav";
+import { DEFAULT_WEBDAV_CONFIG, FakeFsWebdav } from "./fsWebdav";
 import { DEFAULT_WEBDIS_CONFIG } from "./fsWebdis";
 import { I18n } from "./i18n";
 import type { LangTypeAndAuto, TransItemType } from "./i18n";
@@ -126,7 +139,7 @@ const DEFAULT_SETTINGS: RemotelySavePluginSettings = {
   koofr: DEFAULT_KOOFR_CONFIG,
   azureblobstorage: DEFAULT_AZUREBLOBSTORAGE_CONFIG,
   password: "",
-  serviceType: "s3",
+  serviceType: DEFAULT_SERVICE_TYPE,
   currLogLevel: "info",
   // vaultRandomID: "", // deprecated
   autoRunEveryMilliseconds: -1,
@@ -164,9 +177,9 @@ interface OAuth2Info {
   revokeAuthSetting?: Setting;
 }
 
-const iconNameSyncWait = `remotely-save-sync-wait`;
-const iconNameSyncRunning = `remotely-save-sync-running`;
-const iconNameLogs = `remotely-save-logs`;
+const iconNameSyncWait = `remotely-save-next-sync-wait`;
+const iconNameSyncRunning = `remotely-save-next-sync-running`;
+const iconNameLogs = `remotely-save-next-logs`;
 
 const getIconSvg = () => {
   const iconSvgSyncWait = createElement(RotateCcw);
@@ -213,7 +226,66 @@ const getStatusBarShortMsgFromSyncSource = (
   }
 };
 
+import { getBaiduProfileId, BaiduProfileError } from "./native/baiduProfile";
+import { getQuarkProfileId } from "./native/quarkAuth";
+import { getQuarkPluginTransport } from "./native/quarkService";
+import { QuarkError } from "./native/quarkTransport";
+import { ActivityTracker, listActivities, saveActivity, safeSyncError, syncSettingsFingerprint, webdavScope, type SyncActivity } from "./syncActivity";
+import { progressStatus } from "./syncProgressUi";
+import { closeNativeConnections } from "./native/httpsPool";
+import { SyncProtectionError, SyncScopeError } from "./syncProtection";
+import { SyncProtectionModal } from "./syncProtectionModal";
+
 export default class RemotelySavePlugin extends Plugin {
+  baiduConnection?: import("./native/baiduConnection").BaiduConnection;
+  aliyunTransport?: import("./native/aliyunTransport").AliyunTransport;
+  quarkTransport?: import("./native/quarkTransport").QuarkTransport;
+  nativeMaintenance = false;
+  syncUiStatus = "尚未同步";
+  syncControl?: SyncControl;
+  private cancelSyncReads?: () => void;
+  toggleSyncPause() {
+    const control=this.syncControl;if(!this.isSyncing||!control||control.state==="stopping")return;
+    if(control.state==="paused")control.resume();else control.pause();
+    this.syncUiStatus=control.state==="paused"?"已暂停 · 当前请求完成后等待继续":this.syncUiActivity?.progress?progressStatus(this.syncUiActivity.progress):"正在同步…";
+    this.updateSyncUi();
+  }
+  stopSync() {
+    if(!this.isSyncing||!this.syncControl)return;
+    this.syncControl.stop();this.cancelSyncReads?.();this.syncUiStatus="正在停止 · 等待当前请求完成…";this.updateSyncUi();
+  }
+  syncUiActivity?: SyncActivity;
+  private syncUiListeners=new Set<()=>void>();
+  private syncUiTimer?: ReturnType<typeof setTimeout>;
+  private scheduleSyncUiUpdate(){
+    if(this.syncUiTimer!==undefined)return;
+    this.syncUiTimer=setTimeout(()=>{this.syncUiTimer=undefined;this.updateSyncUi();},200);
+  }
+  onSyncUiUpdate(callback:()=>void){this.syncUiListeners.add(callback);return ()=>this.syncUiListeners.delete(callback);}
+  updateSyncUi(){
+    if(this.syncUiTimer!==undefined){clearTimeout(this.syncUiTimer);this.syncUiTimer=undefined;}
+    if(this.isSyncing&&this.syncUiActivity?.status==="running"&&this.statusBarElement){
+      this.statusBarElement.textContent=`${this.manifest.name} · ${this.syncUiStatus}`;
+    }
+    for(const callback of this.syncUiListeners){try{callback();}catch{console.warn("Sync UI refresh failed");}}
+  }
+  async getSyncActivities(){return listActivities(this.db.simpleKVForMiscTbl,this.vaultRandomID,this.getCurrProfileID());}
+  async testWebdavConnection():Promise<boolean>{
+    if(this.isSyncing||this.nativeMaintenance)throw new Error("busy");
+    const snapshot=cloneDeep(this.settings),fingerprint=syncSettingsFingerprint(snapshot,this.app.vault.getName());
+    this.nativeMaintenance=true;this.syncUiStatus="正在测试连接…";this.updateSyncUi();
+    let failure:unknown;
+    const previousVerified=this.settings.webdavVerifiedConfig;
+    try {
+      const client=getClient(snapshot,this.app.vault.getName(),async()=>{});
+      const ok=await client.checkConnect((error:unknown)=>{failure=error;});
+      if(fingerprint!==syncSettingsFingerprint(this.settings,this.app.vault.getName()))throw new SyncScopeError();
+      if(!ok){this.syncUiStatus=safeSyncError(failure)+(client.connectTestCleanupRequired?"；测试文件夹未清理，请检查 rs-test-folder-*":"");return false;}
+      this.settings.webdavVerifiedConfig=webdavScope(this.settings,this.app.vault.getName());this.settings.webdavNeedsValidation=false;
+      await this.saveSettings();this.syncUiStatus="连接正常，可以同步";return true;
+    } catch(error){this.settings.webdavVerifiedConfig=previousVerified;this.settings.webdavNeedsValidation=true;this.syncUiStatus=safeSyncError(error);return false;}
+    finally {this.nativeMaintenance=false;this.updateSyncUi();}
+  }
   settings!: RemotelySavePluginSettings;
   db!: InternalDBs;
   isSyncing!: boolean;
@@ -232,6 +304,28 @@ export default class RemotelySavePlugin extends Plugin {
   appContainerObserver?: MutationObserver;
 
   async syncRun(triggerSource: SyncTriggerSourceType = "manual") {
+    if(this.isSyncing)return;
+    if(this.settings.serviceType==='baidu'){
+      let ready=false;try{ready=this.settings.baiduWebPrepared===baiduWebBinding(this.settings);}catch{}
+      if(!ready){this.syncUiStatus='请先扫码登录并准备百度同步文件夹。';this.updateSyncUi();if(triggerSource==='manual'||triggerSource==='dry')new Notice(this.syncUiStatus);return;}
+    }
+    if(this.settings.serviceType==="webdav" && this.settings.webdavNeedsValidation){
+      this.syncUiStatus="连接信息已更改，请重新测试";this.updateSyncUi();
+      if(triggerSource==="manual")new Notice(this.syncUiStatus);return;
+    }
+    if (this.nativeMaintenance) {
+      if (triggerSource === "manual" || triggerSource === "dry") new Notice("网盘检查进行中，请完成后再同步。");
+      return;
+    }
+    if (
+      ["baidu", "quark", "aliyun"].includes(this.settings.serviceType) &&
+      (!Platform.isDesktopApp ||
+        (triggerSource !== "manual" && triggerSource !== "dry"))
+    ) {
+      if (triggerSource === "manual" || triggerSource === "dry")
+        new Notice("网盘实验同步仅支持桌面端手动同步及预览。");
+      return;
+    }
     let profiler: Profiler | undefined = undefined;
     if (this.settings.profiler?.enable ?? false) {
       profiler = new Profiler(
@@ -240,7 +334,7 @@ export default class RemotelySavePlugin extends Plugin {
         this.settings.profiler?.recordSize ?? false
       );
     }
-    const fsLocal = new FakeFsLocal(
+    let fsLocal = new FakeFsLocal(
       this.app.vault,
       this.settings.syncConfigDir ?? false,
       this.settings.syncBookmarks ?? false,
@@ -249,12 +343,31 @@ export default class RemotelySavePlugin extends Plugin {
       profiler,
       this.settings.deleteToWhere ?? "system"
     );
-    const fsRemote = getClient(
-      this.settings,
-      this.app.vault.getName(),
-      async () => await this.saveSettings()
-    );
-    const fsEncrypt = new FakeFsEncrypt(
+    let fsRemote: ReturnType<typeof getClient>;
+    try {
+      fsRemote = getClient(
+        this.settings,
+        this.app.vault.getName(),
+        async () => await this.saveSettings(),
+        this.settings.serviceType === "baidu"
+          ? {
+              baiduWebTransport: getBaiduWebPluginTransport(this),
+              getSettings: () => this.settings,
+            }
+          : this.settings.serviceType === "aliyun" ? { aliyunTransport: getAliyunPluginTransport(this), getSettings: () => this.settings, }
+          : this.settings.serviceType === "quark" ? {
+              quarkTransport: getQuarkPluginTransport(this),
+              getSettings: () => this.settings,
+            } : undefined
+      );
+    } catch (error) {
+      if (!["baidu", "quark", "aliyun"].includes(this.settings.serviceType)) throw error;
+      new Notice(
+        `网盘同步配置未就绪：${error instanceof BaiduWebProbeError || error instanceof BaiduProfileError || error instanceof QuarkError || error instanceof AliyunError ? error.code : "invalid_configuration"}`
+      );
+      return;
+    }
+    let fsEncrypt = new FakeFsEncrypt(
       fsRemote,
       this.settings.password ?? "",
       this.settings.encryptionMethod ?? "rclone-base64"
@@ -265,6 +378,44 @@ export default class RemotelySavePlugin extends Plugin {
     };
 
     const profileID = this.getCurrProfileID();
+    const isWebdav=this.settings.serviceType==="webdav";
+    const isBaidu=this.settings.serviceType==="baidu";
+    const isQuark=this.settings.serviceType==="quark";
+    const isAliyun=this.settings.serviceType==="aliyun";
+    const managedUi=isWebdav||isBaidu||isQuark||isAliyun;
+    const runSettings=isWebdav?cloneDeep(this.settings):this.settings;
+    const fingerprint=syncSettingsFingerprint(this.settings,this.app.vault.getName());
+    const control = new SyncControl();
+    this.syncControl = control;
+    this.cancelSyncReads = fsRemote instanceof FakeFsWebdav ? fsRemote.cancelPendingReads : undefined;
+    const guard=()=>{control.guard();if(fingerprint!==syncSettingsFingerprint(this.settings,this.app.vault.getName()) || ((isBaidu||isQuark||isAliyun)&&this.getCurrProfileID()!==profileID))throw new SyncScopeError();};
+    const activity:ActivityTracker|undefined=managedUi&&triggerSource!=="dry"?new ActivityTracker(triggerSource,profileID,()=>{
+      this.syncUiActivity=activity!.record;
+      this.syncUiStatus=control.state==="paused"?"已暂停 · 当前请求完成后等待继续":control.state==="stopping"?"正在停止 · 等待当前请求完成…":progressStatus(activity!.record.progress!);
+      this.scheduleSyncUiUpdate();
+    }):undefined;
+    let stopSpeed:(()=>void)|undefined;
+    if(activity&&managedUi&&Platform.isDesktopApp){
+      const speed=new TransferSpeed();
+      const unsubscribe=observeTransferBytes((direction,bytes)=>speed.add(direction,bytes));
+      activity.record.progress!.speed={upload:0,download:0};
+      const timer=setInterval(()=>{
+        activity.record.progress!.speed=speed.sample();
+        this.scheduleSyncUiUpdate();
+      },1000);
+      stopSpeed=()=>{clearInterval(timer);unsubscribe();activity.record.progress!.speed=undefined;};
+    }
+    if(activity){
+      fsRemote.onScanProgress=(files,folders)=>{guard();activity.onScan("remote",files,folders);};
+      fsLocal.onScanProgress=(files,folders)=>{guard();activity.onScan("local",files,folders);};
+      fsRemote.beforeOperation=()=>control.checkpoint();
+      fsRemote.operationRevision=()=>control.revision;
+      fsLocal.beforeOperation=()=>control.checkpoint();
+      fsLocal.operationRevision=()=>control.revision;
+      fsLocal=activity.observe(fsLocal,"download",guard,()=>control.checkpoint());fsEncrypt=activity.observe(fsEncrypt,"upload",guard,()=>control.checkpoint());
+    }
+    let syncError:unknown;
+    if(managedUi){this.syncUiActivity=activity?.record;this.syncUiStatus=triggerSource==="dry"?"正在预览…":"正在准备同步…";this.updateSyncUi();}
 
     const getProtectError = (
       protectModifyPercentage: number,
@@ -381,6 +532,7 @@ export default class RemotelySavePlugin extends Plugin {
           break;
 
         case 8:
+          if(syncError)break;
           if (this.settings.currLogLevel === "info") {
             getNotice(s, t("syncrun_shortstep2"));
           } else {
@@ -394,6 +546,8 @@ export default class RemotelySavePlugin extends Plugin {
     };
 
     const errNotifyFunc = async (s: SyncTriggerSourceType, error: Error) => {
+      syncError=error;
+      if(managedUi){this.syncUiStatus=safeSyncError(error);this.updateSyncUi();getNotice(s,this.syncUiStatus,10000);return;}
       console.error(error);
       if (error instanceof AggregateError) {
         for (const e of error.errors) {
@@ -434,11 +588,11 @@ export default class RemotelySavePlugin extends Plugin {
       if (step === 1) {
         // change status to "syncing..." on statusbar
         this.updateLastSyncMsg(s, "syncing", -1, -1);
-      } else if (step === 8 && everythingOk) {
+      } else if (step === 8 && everythingOk && !activity?.record.progress?.skipped) {
         const ts = Date.now();
         await upsertLastSuccessSyncTimeByVault(this.db, this.vaultRandomID, ts);
         this.updateLastSyncMsg(s, "not_syncing", ts, null); // hack: 'not_syncing'
-      } else if (!everythingOk) {
+      } else if (!everythingOk || (step === 8 && !!activity?.record.progress?.skipped)) {
         const ts = Date.now();
         await upsertLastFailedSyncTimeByVault(this.db, this.vaultRandomID, ts);
         this.updateLastSyncMsg(s, "not_syncing", null, ts);
@@ -446,7 +600,8 @@ export default class RemotelySavePlugin extends Plugin {
     };
 
     const markIsSyncingFunc = async (isSyncing: boolean) => {
-      this.isSyncing = isSyncing;
+      if (isSyncing) this.isSyncing = true;
+      this.updateSyncUi();
     };
 
     const callbackSyncProcess = async (
@@ -483,9 +638,11 @@ export default class RemotelySavePlugin extends Plugin {
       return;
     }
 
-    const configSaver = async () => await this.saveSettings();
+    const configSaver = isWebdav
+      ? createSnapshotSaver(runSettings,()=>this.settings,()=>this.saveSettings())
+      : async()=>this.saveSettings();
 
-    await syncer(
+    try { await syncer(
       fsLocal,
       fsRemote,
       fsEncrypt,
@@ -495,7 +652,7 @@ export default class RemotelySavePlugin extends Plugin {
       profileID,
       this.vaultRandomID,
       this.app.vault.configDir,
-      this.settings,
+      runSettings,
       this.manifest.version,
       configSaver,
       getProtectError,
@@ -504,11 +661,36 @@ export default class RemotelySavePlugin extends Plugin {
       errNotifyFunc,
       ribboonFunc,
       statusBarFunc,
-      callbackSyncProcess
-    );
-
-    fsEncrypt.closeResources();
-    (profiler as Profiler | undefined)?.clear();
+      callbackSyncProcess,
+      managedUi ? {guard, checkpoint:()=>control.checkpoint(),
+        preparePlan:plan=>{
+          const skipped=isBaidu?skipBaiduEmptyFiles(plan,!!this.settings.password):(isQuark||isAliyun)?skipUnsupportedEmptyUploads(plan,!!this.settings.password):[];
+          for(const path of skipped)activity?.onSkipped(path,'empty_file_unsupported');
+        },
+        validatePlan:plan=>{if(isBaidu)assertBaiduWebPlan(plan,!!this.settings.password);},
+        onPhase:phase=>activity?.onPhase(phase),
+        onPlan:summary=>activity?.onPlan(summary),
+        onTask:event=>activity?.onTask(event),
+        authorizeLargeChanges:async request=>{
+        if(triggerSource!=="manual")return false;
+        this.syncUiStatus="同步已暂停 · 等待本次变更确认";this.updateSyncUi();
+        const modal=new SyncProtectionModal(this.app,request);
+        return control.waitFor(modal.ask(),()=>modal.close());
+      }} : undefined
+    ); } catch(error){syncError=error;if(managedUi)this.syncUiStatus=safeSyncError(error);else throw error;}
+    finally {
+      stopSpeed?.();
+      try{control.guard();}catch(error){syncError ??= error;}
+      try{await fsEncrypt.closeResources();}catch(error){syncError ??= error;}finally{(profiler as Profiler | undefined)?.clear();}
+      if(activity){
+        const record=activity.finish(syncError,syncError instanceof SyncProtectionError);
+        if(fsRemote instanceof FakeFsWebdav)record.diagnostics={webdav:cloneDeep(fsRemote.diagnostics)};
+        try{await saveActivity(this.db.simpleKVForMiscTbl,this.vaultRandomID,record);}catch{new Notice("同步记录保存失败；请查看同步结果。");}
+        this.syncUiActivity=record;
+        this.syncUiStatus=record.status==="success"?"同步完成":record.status==="unchanged"?"没有变化":record.status==="partial"?"部分文件未完成 · 查看同步记录":record.error??"同步已暂停";
+      }else if(managedUi&&!syncError)this.syncUiStatus="预览完成";
+      this.isSyncing=false;this.syncControl=undefined;this.cancelSyncReads=undefined;this.updateSyncUi();
+    }
 
     this.syncEvent?.trigger("SYNC_DONE");
   }
@@ -539,7 +721,7 @@ export default class RemotelySavePlugin extends Plugin {
     await this.loadSettings();
 
     // MUST after loadSettings and before prepareDB
-    const profileID: string = this.getCurrProfileID();
+    const profileID: string = this.getCurrProfileID(true);
 
     // lang should be load early, but after settings
     this.i18n = new I18n(this.settings.lang!, async (lang: LangTypeAndAuto) => {
@@ -1317,6 +1499,11 @@ export default class RemotelySavePlugin extends Plugin {
   }
 
   async onunload() {
+    this.syncControl?.stop();
+    this.cancelSyncReads?.();
+    closeWebdavHttpConnections();
+    if(this.syncUiTimer!==undefined){clearTimeout(this.syncUiTimer);this.syncUiTimer=undefined;}
+    closeNativeConnections();
     console.info(`unloading plugin ${this.manifest.id}`);
     this.syncRibbon = undefined;
     if (this.appContainerObserver !== undefined) {
@@ -1507,21 +1694,56 @@ export default class RemotelySavePlugin extends Plugin {
       this.settings.azureblobstorage = DEFAULT_AZUREBLOBSTORAGE_CONFIG;
     }
 
+    if(this.settings.webdavLegacyScope===undefined)this.settings.webdavLegacyScope=webdavScope(this.settings,this.app.vault.getName());
+    migrateWebdavDirectory(this.settings.webdav,this.app.vault.getName());
     await this.saveSettings();
   }
 
   async saveSettings() {
+    if(this.settings.serviceType==="webdav") {
+      const validated=this.settings.webdavVerifiedConfig??this.settings.webdavLegacyScope;
+      if(validated && validated!==webdavScope(this.settings,this.app.vault.getName())) {
+        this.settings.webdavNeedsValidation=true;
+        this.syncUiStatus="同步目录或连接配置已更改，请重新测试";
+      }
+    }
     if (this.settings.obfuscateSettingFile) {
       await this.saveData(normalConfigToMessy(this.settings));
     } else {
       await this.saveData(this.settings);
     }
+    this.updateSyncUi();
   }
 
   /**
    * After 202403 the data should be of profile based.
    */
-  getCurrProfileID() {
+  getCurrProfileID(allowUnconfigured = false) {
+    if(this.settings.serviceType==="webdav"){
+      const scope=webdavScope(this.settings,this.app.vault.getName());
+      return !this.settings.webdavLegacyScope||scope===this.settings.webdavLegacyScope?"webdav-default-1":`webdav-v1-${scope}`;
+    }
+    if (this.settings.serviceType === "aliyun") {
+      try { return getAliyunProfileId(this.settings.aliyunNative, this.settings.password ?? "", this.settings.encryptionMethod ?? "unknown"); }
+      catch (error) { if (allowUnconfigured) return "aliyun-unconfigured"; throw error; }
+    }
+    if (this.settings.serviceType === "quark") {
+      try { return getQuarkProfileId(this.settings.quarkNative, this.settings.password ?? "", this.settings.encryptionMethod ?? "unknown"); }
+      catch (error) { if (allowUnconfigured) return "quark-unconfigured"; throw error; }
+    }
+    if (this.settings.serviceType === "baidu") {
+      try {
+        if(this.settings.baiduWebExperimental)return baiduWebProfile(this.settings);
+        return getBaiduProfileId(
+          this.settings.baiduNative,
+          this.settings.password ?? "",
+          this.settings.encryptionMethod ?? "unknown"
+        );
+      } catch (error) {
+        if (allowUnconfigured) return "baidu-unconfigured";
+        throw error;
+      }
+    }
     if (this.settings.serviceType !== undefined) {
       return `${this.settings.serviceType}-default-1`;
     } else {
@@ -1755,6 +1977,7 @@ export default class RemotelySavePlugin extends Plugin {
   }
 
   enableAutoSyncIfSet() {
+    if(this.autoRunIntervalID!==undefined)window.clearInterval(this.autoRunIntervalID);
     if (
       this.settings.autoRunEveryMilliseconds !== undefined &&
       this.settings.autoRunEveryMilliseconds !== null &&
@@ -1785,6 +2008,12 @@ export default class RemotelySavePlugin extends Plugin {
   }
 
   async _checkCurrFileModified(caller: "SYNC" | "FILE_CHANGES") {
+    if((this.settings.syncOnSaveAfterMilliseconds??-1)<=0)return;
+    if(this.settings.serviceType==="webdav") {
+      if(this.isSyncing){if(caller==="FILE_CHANGES")this.hasPendingSyncOnSave=true;return;}
+      if(caller==="FILE_CHANGES"||this.hasPendingSyncOnSave){this.hasPendingSyncOnSave=false;await this.syncRun("auto_sync_on_save");}
+      return;
+    }
     console.debug(`inside checkCurrFileModified`);
     const currentFile = this.app.workspace.getActiveFile();
 
@@ -1835,11 +2064,11 @@ export default class RemotelySavePlugin extends Plugin {
     this._checkCurrFileModified("SYNC");
   };
 
-  _syncOnSaveEvent2 = throttle(
+  _syncOnSaveEvent2 = debounce(
     async () => {
       await this._checkCurrFileModified("FILE_CHANGES");
     },
-    1000 * 3,
+    1000 * 2,
     {
       leading: false,
       trailing: true,
@@ -1847,6 +2076,10 @@ export default class RemotelySavePlugin extends Plugin {
   );
 
   toggleSyncOnSaveIfSet() {
+    this._syncOnSaveEvent2.cancel();
+    this.syncEvent?.off("SYNC_DONE", this._syncOnSaveEvent1);
+    this.app.vault.off("modify", this._syncOnSaveEvent2);this.app.vault.off("create", this._syncOnSaveEvent2);
+    this.app.vault.off("delete", this._syncOnSaveEvent2);this.app.vault.off("rename", this._syncOnSaveEvent2);
     if (
       this.settings.syncOnSaveAfterMilliseconds !== undefined &&
       this.settings.syncOnSaveAfterMilliseconds !== null &&

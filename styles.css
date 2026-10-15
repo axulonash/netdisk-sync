@@ -242,3 +242,93 @@
 .pro-revoke-auth-button-hide {
   display: none;
 }
+
+.remotely-save-next-settings-section {
+  margin-block: 1em;
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 0.75em;
+}
+
+.remotely-save-next-settings-section > summary {
+  cursor: pointer;
+  font-weight: var(--font-semibold);
+  padding-block: 0.5em;
+}
+
+.remotely-save-next-settings-section > summary:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
+/* Simplified WebDAV settings: native Obsidian colors and controls. */
+.rsnext-settings { max-width:720px; margin:0 auto; container-type:inline-size; }
+.rsnext-header { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.rsnext-header h2 { margin:0; }
+.rsnext-status { color:var(--text-muted); margin:12px 0 24px; }
+.rsnext-tabs { display:flex; gap:8px; border-bottom:1px solid var(--background-modifier-border); margin-bottom:24px; padding-bottom:8px; }
+.rsnext-tabs button[aria-selected="true"] { color:var(--text-accent); box-shadow:inset 0 -2px var(--interactive-accent); }
+.rsnext-row { display:grid; grid-template-columns:180px minmax(0,1fr); gap:8px 16px; align-items:center; margin:16px 0; }
+.rsnext-row input:not([type="checkbox"]), .rsnext-row select { width:100%; min-width:0; }
+.rsnext-row small { grid-column:2; color:var(--text-muted); }
+
+.rsnext-target { overflow-wrap:anywhere; color:var(--text-muted); font-size:var(--font-smallest); }
+.rsnext-hint { color:var(--text-muted); font-size:var(--font-small); margin:24px 0; }
+.rsnext-advanced, .rsnext-record { border-top:1px solid var(--background-modifier-border); padding:16px 0; }
+.rsnext-settings summary { cursor:pointer; line-height:1.6; }
+.rsnext-settings fieldset { border:0; padding:0; margin:16px 0 0; min-width:0; }
+.rsnext-record li { overflow-wrap:anywhere; }
+.rsnext-settings button:focus-visible, .rsnext-settings summary:focus-visible { outline:2px solid var(--interactive-accent); outline-offset:3px; }
+@container (max-width:480px) { .rsnext-row { grid-template-columns:1fr; }.rsnext-row small { grid-column:1; }.rsnext-header { align-items:flex-start; flex-wrap:wrap; } }
+.rsnext-test-hint { display:block; margin:8px 0; color:var(--text-muted); }
+.rsnext-path-tree, .rsnext-path-tree ul { list-style:none; padding-left:16px; }
+.rsnext-address-control { display:flex; align-items:center; gap:8px; min-width:0; }
+.rsnext-address-control input { flex:1; }
+.rsnext-address-control button { flex-shrink:0; }
+.rsnext-connection-light { display:inline-block; width:10px; height:10px; border-radius:50%; flex-shrink:0; background:var(--text-faint); }
+.rsnext-connection-light[data-state="success"] { background:var(--color-green, #2e9d59); }
+.rsnext-connection-light[data-state="failure"] { background:var(--color-red, #dc4c4c); }
+.rsnext-connection-light[data-state="testing"] { background:var(--color-yellow, #d7a12d); }
+
+.rsnext-password-control { position:relative; min-width:0; }
+.rsnext-password-control input { padding-inline-end:40px; box-sizing:border-box; }
+.rsnext-password-control .rsnext-password-toggle { position:absolute; inset-inline-end:4px; top:50%; transform:translateY(-50%); display:flex; align-items:center; justify-content:center; width:28px; height:28px; padding:0; border:0; background:transparent; box-shadow:none; color:var(--text-muted); }
+.rsnext-password-control .rsnext-password-toggle:hover { color:var(--text-normal); background:var(--background-modifier-hover); }
+.rsnext-connection-divider { border:0; border-top:1px solid var(--background-modifier-border); margin:16px 0 24px; }
+.rsnext-auth-status:empty { display:none; }
+.rsnext-advanced a[data-action="authorization-link"], .rsnext-advanced a[href="https://pan.baidu.com/union"] { display:block; margin:8px 0; }
+.rsnext-advanced a[hidden] { display:none; }
+/* Guided Baidu setup: ordered steps, nearby feedback, desktop handoff. */
+.rsnext-setup-intro { color:var(--text-muted); margin:12px 0 24px; }
+.rsnext-setup-step { padding:20px; margin:16px 0; border:1px solid var(--background-modifier-border); border-radius:var(--radius-m,8px); }
+.rsnext-setup-step[data-state="current"] { border-color:var(--interactive-accent); }
+.rsnext-step-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.rsnext-step-head h3 { margin:0; }
+.rsnext-step-badge { color:var(--text-muted); font-size:var(--font-small); }
+.rsnext-step-help { color:var(--text-muted); line-height:1.6; margin:12px 0; }
+.rsnext-step-feedback { line-height:1.6; margin:12px 0; }
+.rsnext-step-feedback[data-state="failure"] { color:var(--text-error); }
+.rsnext-diagnostics p { overflow-wrap:anywhere; font-size:var(--font-small); color:var(--text-muted); }
+.rsnext-mobile-guide { padding:20px; margin:16px 0; border:1px solid var(--background-modifier-border); border-radius:var(--radius-m,8px); background:var(--background-secondary); line-height:1.7; }
+.rsnext-mobile-guide h3 { margin-top:0; }
+.rsnext-setup-step[hidden] { display:none; }
+@container (max-width:480px) { .rsnext-setup-step { padding:16px; }.rsnext-setup-step .rsnext-address-control { flex-wrap:wrap; }.rsnext-setup-step .rsnext-address-control input { flex-basis:100%; } }
+
+.rsnext-service-picker { display:flex; flex-wrap:wrap; gap:8px; border:0; padding:0; margin:0 0 24px; min-width:0; }
+.rsnext-service-picker legend { font-weight:600; margin-bottom:12px; }
+.rsnext-service-picker label { display:flex; align-items:center; gap:8px; min-height:44px; padding:8px 16px; border:1px solid var(--background-modifier-border); border-radius:var(--radius-m,8px); cursor:pointer; background:var(--background-secondary); }
+.rsnext-service-picker label:has(input:checked) { border-color:var(--interactive-accent); background:var(--background-modifier-hover); }
+.rsnext-service-picker label:has(input:focus-visible) { outline:2px solid var(--interactive-accent); outline-offset:2px; }
+.rsnext-service-picker:disabled label { cursor:default; opacity:0.6; }
+/* One shared progress panel for the four simplified service pages. */
+.rsnext-sync-progress {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+}
+.rsnext-sync-progress[hidden] { display: none; }
+.rsnext-sync-progress progress { width: 100%; accent-color: var(--interactive-accent); }
+.rsnext-sync-progress p { margin: 6px 0 0; overflow-wrap: anywhere; }
+.rsnext-sync-progress p + p { color: var(--text-muted); font-size: var(--font-small); }
+.rsnext-diagnostic pre { overflow: auto; max-height: 240px; font-size: var(--font-smallest); user-select: text; }

@@ -1,9 +1,12 @@
+import { desktopWebdavRequest } from "./native/webdavDesktopTransport";
+import { resolveWebdavDirectory } from "./webdavDirectory";
 import { Buffer } from "buffer";
-import { Queue } from "@fyears/tsqueue";
+import { createHash } from "crypto";
 import { getReasonPhrase } from "http-status-codes/build/cjs/utils-functions";
-import chunk from "lodash/chunk";
 import cloneDeep from "lodash/cloneDeep";
-import flatten from "lodash/flatten";
+import PQueue from "p-queue";
+import { retryWebdavRead, transientWebdavError, type WebdavDiagnostics } from "./webdavRetry";
+import { nanoid } from "nanoid";
 import { Platform, type RequestUrlParam, requestUrl } from "obsidian";
 import type {
   FileStat,
@@ -70,7 +73,10 @@ if (VALID_REQURL) {
         throw: false,
       };
 
-      let r = await requestUrl(p);
+      const execute = () => Platform.isDesktopApp
+        ? desktopWebdavRequest({...p,method:p.method ?? "GET",signal:options.signal})
+        : requestUrl(p);
+      let r = await execute();
 
       if (
         r.status === 401 &&
@@ -85,7 +91,7 @@ if (VALID_REQURL) {
         // here is a dirty hack that works
         console.debug(`so we have 401, try appending request url with slash`);
         p.url = `${options.url}/`;
-        r = await requestUrl(p);
+        r = await execute();
       }
 
       // console.debug(`after request:`);
@@ -210,6 +216,7 @@ const fromWebdavItemToEntity = (x: FileStat, remoteBaseDir: string): Entity => {
     mtimeCli: mtimeSvr, // TODO: no universal way to set mtime in webdav
     size: x.size,
     sizeRaw: x.size,
+    etag: typeof x.etag === "string" ? x.etag : undefined,
   };
 };
 
@@ -251,19 +258,115 @@ const parseCustomHeaders = (x: string): Record<string, string> => {
   return res;
 };
 
+// Measure the actual remote target, which may already be encrypted. These are
+// observations, not server limits; never infer a length failure from HTTP 403.
+export const addWebdavPathDiagnostics = (
+  error: unknown,
+  remotePath: string,
+  operation: string
+): unknown => {
+  try {
+    if (
+      typeof error !== "object" ||
+      error === null ||
+      !("message" in error) ||
+      typeof error.message !== "string" ||
+      "webdavPathDiagnostics" in error
+    ) {
+      return error;
+    }
+    const segments = remotePath.split("/");
+    const diagnostics = {
+      operation,
+      pathCodePoints: Array.from(remotePath).length,
+      pathUtf8Bytes: Buffer.byteLength(remotePath, "utf8"),
+      maxSegmentUtf8Bytes: segments.reduce(
+        (max, segment) => Math.max(max, Buffer.byteLength(segment, "utf8")),
+        0
+      ),
+      // Encoded target path only, excluding the endpoint prefix and query.
+      encodedPathBytes: Buffer.byteLength(
+        segments.map(encodeURIComponent).join("/"),
+        "utf8"
+      ),
+    };
+    const message = `${error.message} [WebDAV path metrics: operation=${operation}, codePoints=${diagnostics.pathCodePoints}, utf8Bytes=${diagnostics.pathUtf8Bytes}, maxSegmentUtf8Bytes=${diagnostics.maxSegmentUtf8Bytes}, encodedPathBytes=${diagnostics.encodedPathBytes}; target path only, server limits unknown]`;
+    Object.assign(error, { webdavPathDiagnostics: diagnostics, message });
+  } catch {
+    // Diagnostics must not replace frozen errors or encoding failures.
+  }
+  return error;
+};
+
 export class FakeFsWebdav extends FakeFs {
   kind: "webdav";
 
   webdavConfig: WebdavConfig;
   remoteBaseDir: string;
   client!: WebDAVClient;
+  private initPromise?: Promise<void>;
   vaultFolderExists: boolean;
   saveUpdatedConfigFunc: () => Promise<any>;
 
-  supportApachePartial: boolean;
-  supportSabrePartial: boolean;
   isNextcloud: boolean;
   nextcloudUploadServerAddress: string;
+  readonly diagnostics: WebdavDiagnostics = { requests: 0, retries: 0, elapsedMs: 0, operations: {} };
+  private scanQueue?: PQueue;
+  private snapshot?: Map<string, Entity>;
+  private readonly readController = new AbortController();
+  cancelPendingReads = () => this.readController.abort();
+
+  private strongEtag(entity?: Entity): string | undefined {
+    const tag = entity?.etag;
+    // The installed SDK strips quotes. Weak tags cannot guard If-Match.
+    return tag && !tag.startsWith("W/") && /^[\x21\x23-\x5b\x5d-\x7e]+$/.test(tag) ? `"${tag}"` : undefined;
+  }
+  private snapshotKey(path: string) { return stripLeadingPath(path).replace(/\/+$/, ""); }
+  private remember(path: string, entity: Entity) {
+    this.snapshot?.set(this.snapshotKey(path), {...entity});
+  }
+  statForRead = async (key: string): Promise<Entity> => {
+    const cached = this.snapshot?.get(this.snapshotKey(getWebdavPath(key, this.remoteBaseDir)));
+    return cached && this.strongEtag(cached) ? {...cached} : this.stat(key);
+  };
+  private async versionHeaders(path: string, writing = false): Promise<Record<string, string>> {
+    if (!this.snapshot) return {};
+    const expected = this.snapshot.get(this.snapshotKey(path));
+    if (!expected) {
+      if (writing) return {"If-None-Match": "*"};
+      throw Object.assign(new Error("Remote file changed after scan"), {code: "plan_changed"});
+    }
+    if (expected.key!.endsWith("/")) return {};
+    const tag = this.strongEtag(expected);
+    if (tag) return {"If-Match": tag};
+    // Servers without usable ETags still get a fresh metadata check. This is
+    // conservative but cannot detect equal-size edits within timestamp precision.
+    const actual = await this._statFromRoot(path);
+    if (expected.sizeRaw !== actual.sizeRaw || expected.mtimeSvr !== actual.mtimeSvr || expected.etag !== actual.etag)
+      throw Object.assign(new Error("Remote file changed after scan"), {code: "plan_changed"});
+    return expected.mtimeSvr && Number.isFinite(expected.mtimeSvr)
+      ? {"If-Unmodified-Since": new Date(expected.mtimeSvr).toUTCString()} : {};
+  }
+  private async nextcloudDestinationConditions(path: string, destination: string): Promise<Record<string,string>> {
+    if (!this.snapshot) return {};
+    const expected = this.snapshot.get(this.snapshotKey(path));
+    if (!expected) return {Overwrite: "F"};
+    const headers = await this.versionHeaders(path, true);
+    // If-Match on MOVE would apply to the upload session, not its destination.
+    // RFC 4918 section 10.4 uses a tagged If list for destination versions.
+    return headers["If-Match"] ? {If: `<${destination}> ([${headers["If-Match"]}])`} : {};
+  }
+
+  private async readOperation<T>(operation: string, read: () => Promise<T>): Promise<T> {
+    return retryWebdavRead(operation, async () => {await this.beforeOperation?.(); return read();}, attempt => {
+      this.diagnostics.requests++;
+      this.diagnostics.elapsedMs += attempt.elapsedMs;
+      this.diagnostics.operations[operation] = (this.diagnostics.operations[operation] ?? 0) + 1;
+      if (attempt.retryDelayMs !== undefined) this.diagnostics.retries++;
+      if (attempt.status !== undefined) this.diagnostics.lastFailure = {operation, status: attempt.status};
+      if (attempt.status === 429 && this.scanQueue) this.scanQueue.concurrency = Math.max(1, Math.floor(this.scanQueue.concurrency / 2));
+    });
+  }
 
   constructor(
     webdavConfig: WebdavConfig,
@@ -274,22 +377,35 @@ export class FakeFsWebdav extends FakeFs {
     this.kind = "webdav";
     this.webdavConfig = cloneDeep(webdavConfig);
     this.webdavConfig.address = tryEncodeURI(this.webdavConfig.address);
-    this.remoteBaseDir = this.webdavConfig.remoteBaseDir || vaultName || "";
+    // SDK requests normalize boundary slashes; inventory validation and task
+    // paths must use the same base, including user-entered /home/test/.
+    this.remoteBaseDir = resolveWebdavDirectory(this.webdavConfig, vaultName);
     this.vaultFolderExists = false;
     this.saveUpdatedConfigFunc = saveUpdatedConfigFunc;
 
-    this.supportApachePartial = false;
-    this.supportSabrePartial = false;
     this.isNextcloud = false;
     this.nextcloudUploadServerAddress = "";
   }
 
-  async _init() {
-    // init client if not inited
-    if (this.client !== undefined) {
-      return;
+  _init(): Promise<void> {
+    if (this.initPromise === undefined) {
+      const depth = this.webdavConfig.depth;
+      const manualRecursive = this.webdavConfig.manualRecursive;
+      this.initPromise = this._initOnce().catch((error) => {
+        // A later caller can retry the entire initialization after a failure.
+        this.initPromise = undefined;
+        this.vaultFolderExists = false;
+        this.isNextcloud = false;
+        this.nextcloudUploadServerAddress = "";
+        this.webdavConfig.depth = depth;
+        this.webdavConfig.manualRecursive = manualRecursive;
+        throw error;
+      });
     }
+    return this.initPromise;
+  }
 
+  private async _initOnce() {
     const cacheHeader = {
       "Cache-Control": "no-cache",
     };
@@ -322,12 +438,13 @@ export class FakeFsWebdav extends FakeFs {
     if (this.vaultFolderExists) {
       // pass
     } else {
-      const res = await this.client.exists(`/${this.remoteBaseDir}/`);
+      const res = await this.readOperation("exists", () => this.client.exists(`/${this.remoteBaseDir}/`, {signal:this.readController.signal}));
       if (res) {
         // console.info("remote vault folder exits!");
         this.vaultFolderExists = true;
       } else {
         console.info("remote vault folder not exists, creating");
+        await this.beforeOperation?.();
         await this.client.createDirectory(`/${this.remoteBaseDir}/`);
         console.info("remote vault folder created!");
         this.vaultFolderExists = true;
@@ -359,11 +476,7 @@ export class FakeFsWebdav extends FakeFs {
    * => <server>/remote.php/dav/uploads/<userid>
    */
   _getnextcloudUploadServerAddress = () => {
-    let k = this.webdavConfig.address;
-    if (k.endsWith("/")) {
-      // no tailing slash
-      k = k.substring(0, k.length - 1);
-    }
+    const k = this.webdavConfig.address.replace(/\/+$/, "");
     const s = k.split("/");
     if (
       s.length > 3 &&
@@ -378,9 +491,22 @@ export class FakeFsWebdav extends FakeFs {
   };
 
   async _checkPartialSupport() {
-    const compliance = await this.client.getDAVCompliance(
-      `/${this.remoteBaseDir}/`
-    );
+    const compliance = await this.readOperation("capabilities", () => this.client
+      .customRequest(`/${this.remoteBaseDir}/`, { method: "OPTIONS", signal: this.readController.signal })
+      .then(response => ({ compliance: (response.headers.get("DAV") ?? "").split(",").map(item => item.trim()), server: response.headers.get("Server") ?? "" })))
+      .catch((error: unknown) => {
+        // Capability discovery is optional when OPTIONS is unsupported.
+        // Authentication, permission and transport failures must still surface.
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "status" in error &&
+          (error.status === 405 || error.status === 501)
+        ) {
+          return { compliance: [], server: "" };
+        }
+        throw error;
+      });
 
     for (const c of compliance.compliance) {
       // nextcloud AND with an account
@@ -390,7 +516,7 @@ export class FakeFsWebdav extends FakeFs {
         this.webdavConfig.password !== ""
       ) {
         // the address is parsable
-        const s = this.webdavConfig.address.split("/");
+        const s = this.webdavConfig.address.replace(/\/+$/, "").split("/");
         if (
           s.length > 3 &&
           s[s.length - 3] === "dav" &&
@@ -410,32 +536,12 @@ export class FakeFsWebdav extends FakeFs {
       }
     }
 
-    // taken from https://github.com/perry-mitchell/webdav-client/blob/master/source/operations/partialUpdateFileContents.ts
-    // which is under MIT license
-    if (
-      compliance.server.includes("Apache") &&
-      compliance.compliance.includes("<http://apache.org/dav/propset/fs/1>")
-    ) {
-      this.supportApachePartial = true;
-      console.debug(
-        `supportApachePartial=true, compliance=${JSON.stringify(compliance)}`
-      );
-      return true;
-    }
-
-    if (compliance.compliance.includes("sabredav-partialupdate")) {
-      this.supportSabrePartial = true;
-      console.debug(
-        `supportSabrePartial=true, compliance=${JSON.stringify(compliance)}`
-      );
-      return true;
-    }
-
     return false;
   }
 
   async walk(): Promise<Entity[]> {
     await this._init();
+    this.snapshot = undefined;
 
     let contents = [] as FileStat[];
     if (
@@ -447,60 +553,53 @@ export class FakeFsWebdav extends FakeFs {
       this.webdavConfig.address.includes("jianguoyun.com") ||
       this.webdavConfig.address.includes("teracloud.jp")
     ) {
-      // the remote doesn't support infinity propfind,
-      // we need to do a bfs here
-      const q = new Queue([`/${this.remoteBaseDir}`]);
-      const CHUNK_SIZE = 10;
-      while (q.length > 0) {
-        const itemsToFetch: string[] = [];
-        while (q.length > 0) {
-          itemsToFetch.push(q.pop()!);
-        }
-        const itemsToFetchChunks = chunk(itemsToFetch, CHUNK_SIZE);
-        // console.debug(itemsToFetchChunks);
-        const subContents = [] as FileStat[];
-        for (const singleChunk of itemsToFetchChunks) {
-          const r = singleChunk.map(async (x) => {
-            let k = (await this.client.getDirectoryContents(x, {
-              deep: false,
-              details: false /* no need for verbose details here */,
-              // TODO: to support .obsidian,
-              // we need to load all files including dot,
-              // anyway to reduce the resources?
-              // glob: "/**" /* avoid dot files by using glob */,
-            })) as FileStat[];
-            k = k.filter((sub) => stripLeadingPath(sub.filename) !== x);
-            return k;
-          });
-          const r3 = await Promise.all(r);
-          for (const r4 of r3) {
-            if (
-              this.webdavConfig.address.includes("jianguoyun.com") &&
-              r4.length >= 749
-            ) {
-              // https://help.jianguoyun.com/?p=2064
-              // no more than 750 per request
-              throw Error(
-                `出错：坚果云 api 有限制，文件列表加载不全。终止同步！`
-              );
-            }
+      const queue = new PQueue({ concurrency: 6 });
+      this.scanQueue = queue;
+      const seen = new Set<string>();
+      let failure: unknown;
+      let scannedFiles = 0, scannedFolders = 0;
+      const addDirectory = (path: string) => {
+        path = path.replace(/\/+$/, "");
+        if (failure || seen.has(path)) return;
+        seen.add(path);
+        void queue.add(async () => {
+          const listing = await this.readOperation("list", () => this.client.getDirectoryContents(path, {
+            deep: false, details: false, signal:this.readController.signal,
+          })) as FileStat[];
+          if (failure) return;
+          const children = listing.filter(sub => stripLeadingPath(sub.filename).replace(/\/+$/, "") !== path);
+          if (this.webdavConfig.address.includes("jianguoyun.com") && children.length >= 749) {
+            throw Error("出错：坚果云 api 有限制，文件列表加载不全。终止同步！");
           }
-          const r2 = flatten(r3);
-          subContents.push(...r2);
-        }
-        for (let i = 0; i < subContents.length; ++i) {
-          const f = subContents[i];
-          contents.push(f);
-          if (f.type === "directory") {
-            q.push(stripLeadingPath(f.filename));
+          for (const child of children) {
+            // Reject out-of-scope server entries before scheduling children.
+            getNormPath(child.filename, this.remoteBaseDir);
+            contents.push(child);
+            if (child.type === "directory") {
+              scannedFolders++;
+              addDirectory(stripLeadingPath(child.filename));
+            } else scannedFiles++;
           }
-        }
+          this.onScanProgress?.(scannedFiles, scannedFolders);
+        }).catch(error => {
+          failure ??= error;
+          queue.pause();
+          queue.clear();
+        });
+      };
+      addDirectory(`/${this.remoteBaseDir}`);
+      try {
+        await queue.onIdle();
+        if (failure) throw failure;
+      } finally {
+        this.scanQueue = undefined;
       }
     } else {
       // the remote supports infinity propfind
-      contents = (await this.client.getDirectoryContents(
+      contents = (await this.readOperation("list", () => this.client.getDirectoryContents(
         `/${this.remoteBaseDir}`,
         {
+          signal:this.readController.signal,
           deep: true,
           details: false /* no need for verbose details here */,
           // TODO: to support .obsidian,
@@ -508,25 +607,29 @@ export class FakeFsWebdav extends FakeFs {
           // anyway to reduce the resources?
           // glob: "/**" /* avoid dot files by using glob */,
         }
-      )) as FileStat[];
+      ))) as FileStat[];
     }
 
     const result = contents
       .map((x) => fromWebdavItemToEntity(x, this.remoteBaseDir))
       .filter((x) => x.keyRaw !== "/");
+    this.snapshot = new Map(result.map(entity => [this.snapshotKey(getWebdavPath(entity.key!, this.remoteBaseDir)), {...entity}]));
+    const files = result.filter(entity => !entity.key!.endsWith("/")).length;
+    this.onScanProgress?.(files, result.length - files);
     return result;
   }
 
   async walkPartial(): Promise<Entity[]> {
     await this._init();
 
-    const contents = (await this.client.getDirectoryContents(
+    const contents = (await this.readOperation("listPartial", () => this.client.getDirectoryContents(
       `/${this.remoteBaseDir}`,
       {
+        signal:this.readController.signal,
         deep: false, // partial, no need to recursive here
         details: false /* no need for verbose details here */,
       }
-    )) as FileStat[];
+    ))) as FileStat[];
     return contents
       .map((x) => fromWebdavItemToEntity(x, this.remoteBaseDir))
       .filter((x) => x.keyRaw !== "/");
@@ -539,9 +642,10 @@ export class FakeFsWebdav extends FakeFs {
   }
 
   async _statFromRoot(key: string): Promise<Entity> {
-    const res = (await this.client.stat(key, {
+    const res = (await this.readOperation("stat", () => this.client.stat(key, {
+      signal:this.readController.signal,
       details: false,
-    })) as FileStat;
+    }))) as FileStat;
     return fromWebdavItemToEntity(res, this.remoteBaseDir);
   }
 
@@ -561,10 +665,13 @@ export class FakeFsWebdav extends FakeFs {
   ): Promise<Entity> {
     // the sync algorithm should do recursive manually already.
     // if we set recursive: true here, Digest auth will return some error inside the PROPFIND
+    await this.beforeOperation?.();
     await this.client.createDirectory(key, {
       recursive: false,
     });
-    return await this._statFromRoot(key);
+    const entity = await this._statFromRoot(key);
+    this.remember(key, entity);
+    return entity;
   }
 
   async writeFile(
@@ -584,7 +691,9 @@ export class FakeFsWebdav extends FakeFs {
       mtime,
       ctime,
       key
-    );
+    ).catch((error: unknown) => {
+      throw addWebdavPathDiagnostics(error, uploadFile, "write");
+    });
   }
 
   async _writeFileFromRoot(
@@ -594,9 +703,8 @@ export class FakeFsWebdav extends FakeFs {
     ctime: number,
     origKey: string
   ): Promise<Entity> {
-    // less than 10 MB
-    if (content.byteLength <= 10 * 1024 * 1024) {
-      return await this._writeFileFromRootFull(
+    if (content.byteLength > 10 * 1024 * 1024 && this.isNextcloud) {
+      return await this._writeFileFromRootNextcloud(
         key,
         content,
         mtime,
@@ -605,66 +713,16 @@ export class FakeFsWebdav extends FakeFs {
       );
     }
 
-    // larger than 10 MB
-    if (
-      !this.isNextcloud &&
-      !this.supportApachePartial &&
-      !this.supportSabrePartial
-    ) {
-      // give up and upload by whole, and directly return
-      return await this._writeFileFromRootFull(
-        key,
-        content,
-        mtime,
-        ctime,
-        origKey
-      );
-    }
-
-    // try to upload by chunks
-    try {
-      if (this.isNextcloud) {
-        return await this._writeFileFromRootNextcloud(
-          key,
-          content,
-          mtime,
-          ctime,
-          origKey
-        );
-      } else if (this.supportApachePartial) {
-        return await this._writeFileFromRootApachePartial(
-          key,
-          content,
-          mtime,
-          ctime,
-          origKey
-        );
-      } else if (this.supportSabrePartial) {
-        return await this._writeFileFromRootSabrePartial(
-          key,
-          content,
-          mtime,
-          ctime,
-          origKey
-        );
-      }
-      throw Error(`Error: partial upload / update method is not implemented??`);
-    } catch (e) {
-      console.error(
-        `we fail to write file partially for nextcloud or apache or sabre/dav, stop!`
-      );
-      console.error(e);
-      throw e;
-      // this.isNextcloud = false;
-      // this.supportApachePartial = false;
-      // return await this._writeFileFromRootFull(
-      //   key,
-      //   content,
-      //   mtime,
-      //   ctime,
-      //   origKey
-      // );
-    }
+    // Generic partial updates required truncating the live target first. Use
+    // one ordinary PUT instead; do not destroy the old file to start an upload.
+    // Atomic replacement during PUT still depends on the server implementation.
+    return await this._writeFileFromRootFull(
+      key,
+      content,
+      mtime,
+      ctime,
+      origKey
+    );
   }
 
   async _writeFileFromRootFull(
@@ -675,13 +733,41 @@ export class FakeFsWebdav extends FakeFs {
     origKey: string
   ): Promise<Entity> {
     // console.debug(`start _writeFileFromRootFull`);
-    await this.client.putFileContents(key, content, {
-      overwrite: true,
-      onUploadProgress: (progress: any) => {
-        console.info(`Uploaded ${progress.loaded} bytes of ${progress.total}`);
-      },
+    const headers = await this.versionHeaders(key, true);
+    await this.beforeOperation?.();
+    let uploadedEtag: string | undefined;
+    try { const response = await this.client.customRequest(key, {
+      method: "PUT",
+      headers: {"Content-Type": "application/octet-stream", ...headers},
+      data: content,
     });
+      if (![200,201,204].includes(response.status)) throw Object.assign(new Error("Upload was not committed"), {status: response.status});
+      uploadedEtag = response.headers.get("etag") ?? undefined;
+    } catch (error: any) {
+      if (transientWebdavError(error) && error?.status === undefined && error?.response?.status === undefined) {
+        // A transport error may arrive after the server committed the PUT.
+        // Confirm a strong version and exact bytes; never replay the mutation.
+        try {
+          const candidate = await this._statFromRoot(key);
+          const tag = this.strongEtag(candidate);
+          if (tag && candidate.sizeRaw === content.byteLength) {
+            const downloaded = await this.readOperation("reconcileUpload", () => this.client.getFileContents(key, {headers: {"If-Match": tag},signal:this.readController.signal}));
+            const actual = downloaded instanceof ArrayBuffer ? new Uint8Array(downloaded) : Buffer.isBuffer(downloaded) ? downloaded : undefined;
+            if (actual && createHash("sha256").update(actual).digest("hex") === createHash("sha256").update(new Uint8Array(content)).digest("hex")) {
+              this.remember(key, candidate);
+              return candidate;
+            }
+          }
+        } catch { /* Keep the original uncertain transfer error. */ }
+        try { error.outcomeUnknown = true; } catch {}
+      }
+      throw error;
+    }
     const k = await this._statFromRoot(key);
+    if (uploadedEtag && this.strongEtag(k) && this.strongEtag(k) !== uploadedEtag)
+      throw Object.assign(new Error("Remote file changed after upload"), {code: "plan_changed"});
+    if (k.sizeRaw !== content.byteLength) throw Object.assign(new Error("Upload size not confirmed"), {code: "upload_not_confirmed"});
+    this.remember(key, k);
     // console.debug(`end _writeFileFromRootFull`);
     return k;
   }
@@ -706,21 +792,18 @@ export class FakeFsWebdav extends FakeFs {
         `key=${key} should not have tailing slash in _writeFileFromRootNextcloud`
       );
     }
-    const destUrl = `${this.webdavConfig.address}/${encodeURI(key)}`;
-    console.debug(`destUrl=${destUrl}`);
-
-    const getTmpFolder = (x: string) => {
-      if (x.endsWith("/")) {
-        throw Error(`file to upload by chunk should not ends with /`);
-      }
-      const y = x.split("/");
-      const z = encodeURI(`${y[y.length - 1]}`);
-      return z;
-    };
-
+    // The SDK encodes ordinary request paths; Destination is a header, so it
+    // needs explicit segment encoding. Preserve already encoded base URLs.
+    const baseAddress = this.webdavConfig.address.replace(/\/+$/, "");
+    const encodedKey = key
+      .replace(/^\/+/, "")
+      .split("/")
+      .map(encodeURIComponent)
+      .join("/");
+    const destUrl = `${baseAddress}/${encodedKey}`;
     const uploadServerAddress = this.nextcloudUploadServerAddress;
     console.debug(`uploadServerAddress=${uploadServerAddress}`);
-    const tmpFolderName = getTmpFolder(key);
+    const tmpFolderName = `remotely-save-next-${nanoid()}`;
     console.debug(`tmpFolderName=${tmpFolderName}`);
 
     const clientForUpload = createClient(uploadServerAddress, {
@@ -728,6 +811,7 @@ export class FakeFsWebdav extends FakeFs {
       password: tryEncodeUsernamePassword(this.webdavConfig.password),
       headers: {
         "Cache-Control": "no-cache",
+        ...parseCustomHeaders(this.webdavConfig.customHeaders ?? ""),
       },
       authType:
         this.webdavConfig.authType === "digest"
@@ -736,6 +820,7 @@ export class FakeFsWebdav extends FakeFs {
     });
 
     // create folder
+    await this.beforeOperation?.();
     await clientForUpload.createDirectory(tmpFolderName, {
       method: "MKCOL",
       headers: {
@@ -744,45 +829,60 @@ export class FakeFsWebdav extends FakeFs {
     });
     console.debug(`finish creating folder`);
 
-    // upload by chunks
-    const sizePerChunk = 5 * 1024 * 1024; // 5 mb
-    const chunkRanges = splitFileSizeToChunkRanges(
-      content.byteLength,
-      sizePerChunk
-    );
-    for (let i = 0; i < chunkRanges.length; ++i) {
-      const { start, end } = chunkRanges[i];
-      const tmpFileName = `${i + 1}`.padStart(5, "0");
-      const tmpFileNameWithFolder = `${tmpFolderName}/${tmpFileName}`;
-      console.debug(
-        `start to upload chunk ${
-          i + 1
-        } to ${tmpFileNameWithFolder} with startInclusive=${start}, endInclusive=${end}`
+    try {
+      // upload by chunks
+      const sizePerChunk = 5 * 1024 * 1024; // 5 mb
+      const chunkRanges = splitFileSizeToChunkRanges(
+        content.byteLength,
+        sizePerChunk
       );
-      await clientForUpload.putFileContents(
-        tmpFileNameWithFolder,
-        content.slice(start, end + 1),
-        {
-          headers: {
-            Destination: destUrl,
-            "OC-Total-Length": `${content.byteLength}`,
-          },
-        }
-      );
-    }
-    console.debug(`finish upload all chunks`);
+      for (let i = 0; i < chunkRanges.length; ++i) {
+        const { start, end } = chunkRanges[i];
+        const tmpFileName = `${i + 1}`.padStart(5, "0");
+        const tmpFileNameWithFolder = `${tmpFolderName}/${tmpFileName}`;
+        console.debug(
+          `start to upload chunk ${
+            i + 1
+          } to ${tmpFileNameWithFolder} with startInclusive=${start}, endInclusive=${end}`
+        );
+        await this.beforeOperation?.();
+        await clientForUpload.putFileContents(
+          tmpFileNameWithFolder,
+          content.slice(start, end + 1),
+          {
+            headers: {
+              Destination: destUrl,
+              "OC-Total-Length": `${content.byteLength}`,
+            },
+          }
+        );
+      }
+      console.debug(`finish upload all chunks`);
 
-    // move to assemble
-    const fakeFileToMoveUrl = `${tmpFolderName}/.file`;
-    console.debug(`fakeFileToMoveUrl=${fakeFileToMoveUrl}`);
-    await clientForUpload.customRequest(fakeFileToMoveUrl, {
-      method: "MOVE",
-      headers: {
-        Destination: destUrl,
-        "OC-Total-Length": `${content.byteLength}`,
-      },
-    });
-    console.debug(`finish moving file`);
+      // move to assemble
+      const fakeFileToMoveUrl = `${tmpFolderName}/.file`;
+      console.debug(`fakeFileToMoveUrl=${fakeFileToMoveUrl}`);
+      const destinationConditions = await this.nextcloudDestinationConditions(key, destUrl);
+      await this.beforeOperation?.();
+      await clientForUpload.customRequest(fakeFileToMoveUrl, {
+        method: "MOVE",
+        headers: {
+          Destination: destUrl,
+          "OC-Total-Length": `${content.byteLength}`,
+          ...destinationConditions,
+        },
+      });
+      console.debug(`finish moving file`);
+    } catch (error) {
+      // Only this successfully created session belongs to this operation.
+      // Cleanup must never replace the original upload/assembly failure.
+      try {
+        await clientForUpload.deleteFile(tmpFolderName);
+      } catch {
+        console.warn("Nextcloud temporary upload cleanup failed");
+      }
+      throw error;
+    }
     // TODO: setting X-OC-Mtime
 
     // stat
@@ -796,88 +896,10 @@ export class FakeFsWebdav extends FakeFs {
       console.error(err);
       throw Error(err);
     }
+    this.remember(key, k);
     console.debug(`after stat, k=${JSON.stringify(k, null, 2)}`);
 
     return k;
-  }
-
-  async _writeFileFromRootApachePartial(
-    key: string,
-    content: ArrayBuffer,
-    mtime: number,
-    ctime: number,
-    origKey: string
-  ): Promise<Entity> {
-    // firstly upload a 0-byte data
-    await this._writeFileFromRootFull(
-      key,
-      new ArrayBuffer(0),
-      mtime,
-      ctime,
-      origKey
-    );
-
-    // then "update" by chunks
-    const sizePerChunk = 5 * 1024 * 1024; // 5 mb
-    const chunkRanges = splitFileSizeToChunkRanges(
-      content.byteLength,
-      sizePerChunk
-    );
-
-    // TODO: parallel
-    for (let i = 0; i < chunkRanges.length; ++i) {
-      const { start, end } = chunkRanges[i];
-      await this.client.partialUpdateFileContents(
-        key,
-        start,
-        end,
-        content.slice(start, end + 1)
-      );
-    }
-
-    // lastly return
-    return await this.stat(origKey);
-  }
-
-  async _writeFileFromRootSabrePartial(
-    key: string,
-    content: ArrayBuffer,
-    mtime: number,
-    ctime: number,
-    origKey: string
-  ): Promise<Entity> {
-    // firstly upload a 0-byte data
-    await this._writeFileFromRootFull(
-      key,
-      new ArrayBuffer(0),
-      mtime,
-      ctime,
-      origKey
-    );
-
-    // then "update" by chunks
-    const sizePerChunk = 5 * 1024 * 1024; // 5 mb
-    const chunkRanges = splitFileSizeToChunkRanges(
-      content.byteLength,
-      sizePerChunk
-    );
-
-    // diff from apachePartial: we use "append" header here for dufs...
-    // we cannot parallel here
-    for (let i = 0; i < chunkRanges.length; ++i) {
-      const { start, end } = chunkRanges[i];
-      await this.client.customRequest(key, {
-        method: "PATCH",
-        headers: {
-          "X-Update-Range": "append",
-          "Content-Type": "application/x-sabredav-partialupdate",
-        },
-        data: content.slice(start, end + 1),
-      });
-    }
-
-    // lastly return
-    return await this.stat(origKey);
   }
 
   async readFile(key: string): Promise<ArrayBuffer> {
@@ -890,7 +912,8 @@ export class FakeFsWebdav extends FakeFs {
   }
 
   async _readFileFromRoot(key: string): Promise<ArrayBuffer> {
-    const buff = (await this.client.getFileContents(key)) as BufferLike;
+    const headers = await this.versionHeaders(key);
+    const buff = (await this.readOperation("download", () => this.client.getFileContents(key, {headers,signal:this.readController.signal}))) as BufferLike;
     if (buff instanceof ArrayBuffer) {
       return buff;
     } else if (buff instanceof Buffer) {
@@ -906,7 +929,20 @@ export class FakeFsWebdav extends FakeFs {
     const remoteFileName1 = getWebdavPath(key1, this.remoteBaseDir);
     const remoteFileName2 = getWebdavPath(key2, this.remoteBaseDir);
     await this._init();
-    await this.client.moveFile(remoteFileName1, remoteFileName2);
+    const headers = await this.versionHeaders(remoteFileName1);
+    await this.beforeOperation?.();
+    await this.client.moveFile(remoteFileName1, remoteFileName2, {
+      overwrite: false, headers,
+    });
+    if (this.snapshot) {
+      const from = this.snapshotKey(remoteFileName1), to = this.snapshotKey(remoteFileName2);
+      for (const [path, entry] of [...this.snapshot]) if (path === from || path.startsWith(`${from}/`)) {
+        this.snapshot.delete(path);
+        const next = to + path.slice(from.length);
+        const key = getNormPath(next, this.remoteBaseDir) + (entry.key!.endsWith("/") ? "/" : "");
+        this.snapshot.set(next, {...entry, key, keyRaw: key});
+      }
+    }
   }
 
   async rm(key: string): Promise<void> {
@@ -914,14 +950,26 @@ export class FakeFsWebdav extends FakeFs {
       return;
     }
     await this._init();
-    try {
-      const remoteFileName = getWebdavPath(key, this.remoteBaseDir);
-      await this.client.deleteFile(remoteFileName);
-      // console.info(`delete ${remoteFileName} succeeded`);
-    } catch (err) {
-      console.error("some error while deleting");
-      console.error(err);
+    const remoteFileName = getWebdavPath(key, this.remoteBaseDir);
+    if (this.snapshot && key.endsWith("/")) {
+      while (true) {
+        await this.beforeOperation?.();
+        const revision = this.operationRevision?.();
+        const entries = await this.readOperation("verifyEmptyFolder", () => this.client.getDirectoryContents(remoteFileName, {deep: false, details: false, signal:this.readController.signal})) as FileStat[];
+        if (entries.some(entry => this.snapshotKey(entry.filename) !== this.snapshotKey(remoteFileName)))
+          throw Object.assign(new Error("Folder contents changed after scan"), {code: "plan_changed"});
+        await this.beforeOperation?.();
+        if (revision === this.operationRevision?.()) break;
+      }
     }
+    // Let failures (including 404) reach the sync engine. It must not clear
+    // previous sync records when the deletion has not been confirmed.
+    const headers = await this.versionHeaders(remoteFileName);
+    await this.beforeOperation?.();
+    await this.client.deleteFile(remoteFileName, {headers});
+    const removed = this.snapshotKey(remoteFileName);
+    if (this.snapshot) for (const path of this.snapshot.keys())
+      if (path === removed || path.startsWith(`${removed}/`)) this.snapshot.delete(path);
   }
 
   async checkConnect(callbackFunc?: any): Promise<boolean> {
@@ -933,7 +981,7 @@ export class FakeFsWebdav extends FakeFs {
     ) {
       const err =
         "Error: the url should start with http(s):// but it does not!";
-      console.error(err);
+      console.warn("WebDAV connection check failed.");
       if (callbackFunc !== undefined) {
         callbackFunc(err);
       }
@@ -947,7 +995,7 @@ export class FakeFsWebdav extends FakeFs {
         throw Error("cannot stat root vault folder!");
       }
     } catch (err) {
-      console.error(err);
+      console.warn("WebDAV connection check failed.");
       callbackFunc?.(err);
       return false;
     }

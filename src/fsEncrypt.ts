@@ -111,8 +111,8 @@ export class FakeFsEncrypt extends FakeFs {
     throw Error(`no idea about isFolderAware for method=${this.method}`);
   }
 
-  async isPasswordOk(): Promise<PasswordCheckType> {
-    const innerWalkResult = await this.walkPartial();
+  async isPasswordOk(scanned?: Entity[]): Promise<PasswordCheckType> {
+    const innerWalkResult = scanned ?? await this.walkPartial();
 
     if (innerWalkResult === undefined || innerWalkResult.length === 0) {
       // remote empty
@@ -208,6 +208,7 @@ export class FakeFsEncrypt extends FakeFs {
           sizeEnc: innerEntity.size!,
           sizeRaw: innerEntity.sizeRaw,
           hash: undefined,
+          etag: innerEntity.etag,
           synthesizedFolder: innerEntity.synthesizedFolder,
         });
 
@@ -219,6 +220,12 @@ export class FakeFsEncrypt extends FakeFs {
   }
 
   async stat(key: string): Promise<Entity> {
+    return this.statInternal(key, false);
+  }
+
+  statForRead = (key: string): Promise<Entity> => this.statInternal(key, true);
+
+  private async statInternal(key: string, forRead: boolean): Promise<Entity> {
     if (!this.hasCacheMap) {
       throw new Error("You have to build the cacheMap firstly for stat");
     }
@@ -227,7 +234,8 @@ export class FakeFsEncrypt extends FakeFs {
       throw new Error(`no encrypted key ${key} before!`);
     }
 
-    const innerEntity = await this.innerFs.stat(keyEnc);
+    const innerEntity = await (forRead && this.innerFs.statForRead
+      ? this.innerFs.statForRead(keyEnc) : this.innerFs.stat(keyEnc));
     if (this.isPasswordEmpty()) {
       return copyEntityAndCopyKeyEncSizeEnc(innerEntity);
     } else {
@@ -241,6 +249,7 @@ export class FakeFsEncrypt extends FakeFs {
         sizeEnc: innerEntity.size!,
         sizeRaw: innerEntity.sizeRaw,
         hash: undefined,
+        etag: innerEntity.etag,
         synthesizedFolder: innerEntity.synthesizedFolder,
       };
     }

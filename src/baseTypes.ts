@@ -14,6 +14,7 @@ import type {
   YandexDiskConfig,
 } from "../pro/src/baseTypesPro";
 import type { LangTypeAndAuto } from "./i18n";
+import type { BaiduConnectionConfig } from "./native/baiduConnection";
 
 declare global {
   var DEFAULT_DROPBOX_APP_KEY: string;
@@ -28,6 +29,9 @@ export const ONEDRIVE_AUTHORITY = global.DEFAULT_ONEDRIVE_AUTHORITY;
 export const DEFAULT_CONTENT_TYPE = "application/octet-stream";
 
 export type SUPPORTED_SERVICES_TYPE =
+  | "baidu"
+  | "quark"
+  | "aliyun"
   | "s3"
   | "webdav"
   | "dropbox"
@@ -43,7 +47,7 @@ export type SUPPORTED_SERVICES_TYPE =
 
 export type SUPPORTED_SERVICES_TYPE_WITH_REMOTE_BASE_DIR = Exclude<
   SUPPORTED_SERVICES_TYPE,
-  "s3" | "azureblobstorage"
+  "baidu" | "quark" | "aliyun" | "s3" | "azureblobstorage"
 >;
 
 export interface S3Config {
@@ -97,6 +101,8 @@ export interface WebdavConfig {
 
   depth?: WebdavDepthType;
   remoteBaseDir?: string;
+  /** Parent directory; the effective target appends the current vault name. */
+  parentDir?: string;
 
   customHeaders?: string;
 
@@ -146,6 +152,15 @@ export interface ProfilerConfig {
 }
 
 export interface RemotelySavePluginSettings {
+  webdavLegacyScope?: string;
+  webdavVerifiedConfig?: string;
+  webdavNeedsValidation?: boolean;
+  baiduNative?: BaiduConnectionConfig;
+  baiduWebRemoteRoot?: string;
+  baiduWebPrepared?: string;
+  baiduWebExperimental?: import("./native/baiduWebProbe").BaiduWebSession;
+  aliyunNative?: import("./native/aliyunAuth").AliyunConfig;
+  quarkNative?: import("./native/quarkAuth").QuarkConfig;
   s3: S3Config;
   webdav: WebdavConfig;
   dropbox: DropboxConfig;
@@ -161,6 +176,7 @@ export interface RemotelySavePluginSettings {
 
   password: string;
   serviceType: SUPPORTED_SERVICES_TYPE;
+  legacyServiceType?: SUPPORTED_SERVICES_TYPE;
   currLogLevel?: string;
   autoRunEveryMilliseconds?: number;
   initRunAfterMilliseconds?: number;
@@ -213,10 +229,10 @@ export interface RemotelySavePluginSettings {
   howToCleanEmptyFolder?: EmptyFolderCleanType;
 }
 
-export const COMMAND_URI = "remotely-save";
-export const COMMAND_CALLBACK = "remotely-save-cb";
-export const COMMAND_CALLBACK_ONEDRIVE = "remotely-save-cb-onedrive";
-export const COMMAND_CALLBACK_DROPBOX = "remotely-save-cb-dropbox";
+export const COMMAND_URI = "remotely-save-next";
+export const COMMAND_CALLBACK = "remotely-save-next-cb";
+export const COMMAND_CALLBACK_ONEDRIVE = "remotely-save-next-cb-onedrive";
+export const COMMAND_CALLBACK_DROPBOX = "remotely-save-next-cb-dropbox";
 
 export interface UriParams {
   func?: string;
@@ -232,6 +248,7 @@ export type EmptyFolderCleanType = "skip" | "clean_both";
 
 export type ConflictActionType =
   | "keep_newer"
+  | "keep_both"
   | "keep_larger"
   | "smart_conflict";
 
@@ -244,6 +261,7 @@ export type DecisionTypeForMixedEntity =
   | "remote_is_created_then_pull"
   | "local_is_created_too_large_then_do_nothing"
   | "remote_is_created_too_large_then_do_nothing"
+  | "unsupported_empty_then_skip"
   | "local_is_deleted_thus_also_delete_remote"
   | "remote_is_deleted_thus_also_delete_local"
   | "conflict_created_then_keep_local"

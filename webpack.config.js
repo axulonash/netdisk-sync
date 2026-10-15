@@ -30,6 +30,9 @@ module.exports = {
     libraryTarget: "commonjs",
   },
   plugins: [
+    // Obsidian installs a single main.js. Keep dependency dynamic imports in
+    // that artifact instead of emitting chunks absent from plugin releases.
+    new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 1 }),
     new webpack.DefinePlugin({
       "global.DEFAULT_DROPBOX_APP_KEY": `"${DEFAULT_DROPBOX_APP_KEY}"`,
       "global.DEFAULT_ONEDRIVE_CLIENT_ID": `"${DEFAULT_ONEDRIVE_CLIENT_ID}"`,
@@ -130,6 +133,10 @@ module.exports = {
   },
   externals: {
     obsidian: "commonjs2 obsidian",
+    electron: "commonjs2 electron",
+    "node:https": "commonjs2 node:https",
+    "node:http": "commonjs2 node:http",
+    "node:zlib": "commonjs2 node:zlib",
   },
   optimization: {
     minimize: true,

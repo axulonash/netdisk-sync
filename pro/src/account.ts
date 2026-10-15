@@ -225,6 +225,13 @@ export const checkProRunnableAndFixInplace = async (
 ): Promise<true> => {
   console.debug(`checkProRunnableAndFixInplace`);
 
+  // Native Baidu is a basic provider. Premium conflict handling retains its check.
+  if (
+    ["webdav", "baidu", "quark", "aliyun"].includes(config.serviceType) &&
+    config.conflictAction !== "smart_conflict"
+  )
+    return true;
+
   // many checks if status is valid
 
   // no account

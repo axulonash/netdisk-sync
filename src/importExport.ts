@@ -33,6 +33,18 @@ export const exportQrCodeUri = async (
     delete settings2.koofr;
     delete settings2.azureblobstorage;
     delete settings2.pro;
+    delete settings2.baiduNative;
+    delete settings2.baiduWebExperimental;
+    delete settings2.baiduWebRemoteRoot;
+    delete settings2.baiduWebPrepared;
+    delete settings2.quarkNative;
+    delete settings2.aliyunNative;
+  } else if (exportFields === "baidu") {
+    settings2 = { baiduNative: cloneDeep(settings.baiduNative) };
+  } else if (exportFields === "aliyun") {
+    settings2 = { aliyunNative: cloneDeep(settings.aliyunNative) };
+  } else if (exportFields === "quark") {
+    settings2 = { quarkNative: cloneDeep(settings.quarkNative) };
   } else if (exportFields === "s3") {
     settings2 = { s3: cloneDeep(settings.s3) };
   } else if (exportFields === "dropbox") {
@@ -85,7 +97,7 @@ export interface ProcessQrCodeResultType {
  * @param input
  */
 export const parseUriByHand = (input: string) => {
-  if (!input.startsWith("obsidian://remotely-save?func=settings&")) {
+  if (!input.startsWith(`obsidian://${COMMAND_URI}?func=settings&`)) {
     throw Error(`not valid string`);
   }
 

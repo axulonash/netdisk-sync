@@ -23,3 +23,9 @@ See [here](./check_vconsole_output.md).
 This method works for desktop and mobile devices (iOS, Android), especially useful for iOS.
 
 See [here](./use_logstravaganza.md).
+
+## Local development (Chinese)
+
+See [本地构建、安装与调试](./local-development.zh-cn.md) for this fork's current build and test workflow.
+
+See [当前交付状态与集中验证](../diagnostics/current-status.zh-cn.md) for implemented providers and remaining real-account checks.

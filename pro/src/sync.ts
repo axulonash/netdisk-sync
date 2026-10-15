@@ -1,7 +1,13 @@
+import { isSyncCancelled } from "../../src/syncControl";
 // biome-ignore lint/suspicious/noShadowRestrictedNames: <explanation>
 import AggregateError from "aggregate-error";
 import PQueue from "p-queue";
 import XRegExp from "xregexp";
+import { entityFingerprint } from "../../src/syncActivity";
+import { getSyncTask, summarizeSyncPlan } from "../../src/syncProgress";
+import { SyncTransferBudget } from "../../src/syncTransferBudget";
+import { assertLocalVersion } from "../../src/syncVersion";
+import { SyncProtectionError, type SyncRunHooks } from "../../src/syncProtection";
 import type {
   ConflictActionType,
   EmptyFolderCleanType,
@@ -355,6 +361,10 @@ export const getSkipItemsByList = (
 };
 
 export type SyncPlanType = Record<string, MixedEntity>;
+const reliableConflictTimes = (local: Entity, remote: Entity) => {
+  const a=local.mtimeCli ?? local.mtimeSvr ?? 0, b=remote.mtimeCli ?? remote.mtimeSvr ?? 0;
+  return a>0 && b>0 && a!==b;
+};
 
 const ensembleMixedEnties = async (
   localEntityList: Entity[],
@@ -855,7 +865,7 @@ const getSyncPlanInplace = async (
               // Didn't exist means both are new
               if (syncDirection === "bidirectional") {
                 if (
-                  conflictAction === "keep_newer" ||
+                  (conflictAction === "keep_newer" && reliableConflictTimes(local, remote)) ||
                   (conflictAction === "smart_conflict" &&
                     key.startsWith(`${configDir}/`))
                 ) {
@@ -885,7 +895,7 @@ const getSyncPlanInplace = async (
                     mixedEntry.change = true;
                     keptFolder.add(getParentFolder(key));
                   }
-                } else if (conflictAction === "smart_conflict") {
+                } else if (conflictAction === "smart_conflict" || conflictAction === "keep_both" || (conflictAction === "keep_newer" && !reliableConflictTimes(local, remote))) {
                   // try merge!
                   mixedEntry.decisionBranch = 302;
                   mixedEntry.decision = "conflict_created_then_smart_conflict";
@@ -917,7 +927,7 @@ const getSyncPlanInplace = async (
               // Both exist but don't compare means both are modified
               if (syncDirection === "bidirectional") {
                 if (
-                  conflictAction === "keep_newer" ||
+                  (conflictAction === "keep_newer" && reliableConflictTimes(local, remote)) ||
                   (conflictAction === "smart_conflict" &&
                     key.startsWith(`${configDir}/`))
                 ) {
@@ -947,7 +957,7 @@ const getSyncPlanInplace = async (
                     mixedEntry.change = true;
                     keptFolder.add(getParentFolder(key));
                   }
-                } else if (conflictAction === "smart_conflict") {
+                } else if (conflictAction === "smart_conflict" || conflictAction === "keep_both" || (conflictAction === "keep_newer" && !reliableConflictTimes(local, remote))) {
                   // yeah, try to merge them!
                   mixedEntry.decisionBranch = 301;
                   mixedEntry.decision = "conflict_modified_then_smart_conflict";
@@ -1234,6 +1244,44 @@ const getSyncPlanInplace = async (
   return mixedEntityMappings;
 };
 
+/** Build a plan without persisting history or mutating either filesystem. */
+export const buildSyncPlan = async (options: {
+  localEntityList: Entity[];
+  prevSyncEntityList: Entity[];
+  remoteEntityList: Entity[];
+  fsEncrypt: FakeFsEncrypt;
+  settings: RemotelySavePluginSettings;
+  triggerSource: SyncTriggerSourceType;
+  configDir: string;
+  profiler?: Profiler;
+}): Promise<SyncPlanType> => {
+  const { settings, profiler, configDir } = options;
+  const mappings = await ensembleMixedEnties(
+    options.localEntityList,
+    options.prevSyncEntityList,
+    options.remoteEntityList,
+    settings.syncConfigDir ?? false,
+    settings.syncBookmarks ?? false,
+    configDir,
+    settings.syncUnderscoreItems ?? false,
+    settings.ignorePaths ?? [],
+    settings.onlyAllowPaths ?? [],
+    options.fsEncrypt,
+    settings.serviceType,
+    profiler
+  );
+  return getSyncPlanInplace(
+    mappings,
+    settings.skipSizeLargerThan ?? -1,
+    settings.conflictAction ?? "keep_newer",
+    settings.syncDirection ?? "bidirectional",
+    profiler,
+    settings,
+    options.triggerSource,
+    configDir
+  );
+};
+
 const splitFourStepsOnEntityMappings = (
   mixedEntityMappings: Record<string, MixedEntity>
 ) => {
@@ -1268,6 +1316,7 @@ const splitFourStepsOnEntityMappings = (
     if (
       val.decision === "local_is_created_too_large_then_do_nothing" ||
       val.decision === "remote_is_created_too_large_then_do_nothing" ||
+      val.decision === "unsupported_empty_then_skip" ||
       val.decision === "folder_to_skip"
     ) {
       // pass
@@ -1433,6 +1482,7 @@ const dispatchOperationToActualV3 = async (
     }
   } else if (
     r.decision === "local_is_created_too_large_then_do_nothing" ||
+    r.decision === "unsupported_empty_then_skip" ||
     r.decision === "remote_is_created_too_large_then_do_nothing" ||
     r.decision === "folder_to_skip"
   ) {
@@ -1546,7 +1596,7 @@ const dispatchOperationToActualV3 = async (
     if (r.key.endsWith("/")) {
       await fsLocal.mkdir(r.key);
     } else {
-      const { entity, content } = await copyFile(r.key, fsEncrypt, fsLocal);
+      const { entity, content } = await copyFile(r.key, fsEncrypt, fsLocal, r.local ?? null);
       e1 = entity;
       c1 = content;
     }
@@ -1610,7 +1660,7 @@ const dispatchOperationToActualV3 = async (
     r.decision === "conflict_modified_then_smart_conflict"
   ) {
     // heavy lifting
-    if (isMergable(r.local!, r.remote!)) {
+    if (conflictAction === "smart_conflict" && isMergable(r.local!, r.remote!)) {
       const origContent = await getFileContentHistoryByVaultAndProfile(
         db,
         vaultRandomID,
@@ -1727,7 +1777,8 @@ export const doActualSync = async (
   profiler: Profiler | undefined,
   conflictAction: ConflictActionType,
   triggerSource: SyncTriggerSourceType,
-  callbackSyncProcess?: any
+  callbackSyncProcess?: any,
+  hooks?: SyncRunHooks
 ) => {
   profiler?.addIndent();
   profiler?.insert("doActualSync: enter");
@@ -1749,6 +1800,8 @@ export const doActualSync = async (
   console.debug(`realModifyDeleteCount: ${realModifyDeleteCount}`);
   console.debug(`realTotalCount: ${realTotalCount}`);
   profiler?.insert("doActualSync: finish splitting steps");
+  hooks?.onPlan?.(summarizeSyncPlan(mixedEntityMappings));
+  hooks?.validatePlan?.(mixedEntityMappings);
 
   profiler?.insertSize(
     "doActualSync: sizeof onlyMarkSyncedOps",
@@ -1777,15 +1830,19 @@ export const doActualSync = async (
       realModifyDeleteCount * 100 >=
       allFilesCount * protectModifyPercentage
     ) {
-      const errorStr: string = getProtectModifyPercentageErrorStrFunc(
+      const errorStr: string = getProtectModifyPercentageErrorStrFunc?.(
         protectModifyPercentage,
         realModifyDeleteCount,
         allFilesCount
       );
 
-      profiler?.insert("doActualSync: error branch");
-      profiler?.removeIndent();
-      throw Error(errorStr);
+      const deletedPaths=Object.values(mixedEntityMappings).filter(x=>!x.key.endsWith("/")&&x.decision?.includes("is_deleted_thus")).map(x=>x.key).sort();
+      const request={modifiedCount:realModifyDeleteCount-deletedPaths.length,deletedCount:deletedPaths.length,deletedPaths,allFilesCount};
+      if(!hooks?.authorizeLargeChanges || !await hooks.authorizeLargeChanges(request)) {
+        profiler?.insert("doActualSync: error branch");profiler?.removeIndent();
+        throw new SyncProtectionError("sync_protected",request,errorStr);
+      }
+      hooks.guard?.();
     }
   }
 
@@ -1803,6 +1860,7 @@ export const doActualSync = async (
   ];
 
   let realCounter = 0;
+  const transferBudget = new SyncTransferBudget();
   for (let i = 0; i < nested.length; ++i) {
     profiler?.addIndent();
     profiler?.insert(`doActualSync: step ${i} start`);
@@ -1827,8 +1885,17 @@ export const doActualSync = async (
       for (let k = 0; k < singleLevelOps.length; ++k) {
         const val = singleLevelOps[k];
         const key = val.key;
+        const task = getSyncTask(val);
 
-        const fn = async () => {
+        const fn = () => transferBudget.run(task?.unknownSize ? 64 * 1024 * 1024 : task?.bytes ?? 0, async () => {
+          if (tooManyErrors) return;
+          await hooks?.checkpoint?.();
+          hooks?.guard?.();
+          if (task) hooks?.onTask?.({ ...task, state: "started" });
+          if (task) {
+            if (fsLocal.validatePlan) await fsLocal.validatePlan(key, val.local);
+            else if (val.local) assertLocalVersion(val.local, await fsLocal.stat(key));
+          }
           // console.debug(
           //   `start syncing "${key}" with plan ${JSON.stringify(val)}`
           // );
@@ -1855,14 +1922,16 @@ export const doActualSync = async (
             db,
             conflictAction
           );
+          if (task) hooks?.onTask?.({ ...task, state: "completed" });
 
           // console.debug(`finished ${key}`);
-        };
+        });
 
         queue.add(fn).catch((e) => {
+          if (task && !isSyncCancelled(e)) hooks?.onTask?.({ ...task, state: "failed", error: e });
           const msg = `${key}: ${e.message}`;
-          potentialErrors.push(new Error(msg));
-          if (potentialErrors.length >= 3) {
+          potentialErrors.push(Object.assign(new Error(msg), { cause: e }));
+          if (isSyncCancelled(e) || potentialErrors.length >= 3) {
             tooManyErrors = true;
             queue.pause();
             queue.clear();
@@ -1928,7 +1997,8 @@ export async function syncer(
     step: number,
     everythingOk: boolean
   ) => any,
-  callbackSyncProcess?: any
+  callbackSyncProcess?: any,
+  hooks?: SyncRunHooks
 ) {
   console.info(`starting sync.`);
   markIsSyncingFunc(true);
@@ -1957,19 +2027,18 @@ export async function syncer(
     if (fsEncrypt.innerFs !== fsRemote) {
       throw Error(`your enc should has inner of the remote`);
     }
-    const passwordCheckResult = await fsEncrypt.isPasswordOk();
-    if (!passwordCheckResult.ok) {
-      throw Error(passwordCheckResult.reason);
-    }
     profiler?.insert(
-      `finish step${step} (list partial remote and check password)`
+      `finish step${step} (prepare remote scan)`
     );
 
     step = 3;
     await notifyFunc?.(triggerSource, step);
     await ribboonFunc?.(triggerSource, step);
     await statusBarFunc?.(triggerSource, step, everythingOk);
+    hooks?.onPhase?.("remote");
     const remoteEntityList = await fsEncrypt.walk();
+    const passwordCheckResult = await fsEncrypt.isPasswordOk(remoteEntityList);
+    if (!passwordCheckResult.ok) throw Error(passwordCheckResult.reason);
     // console.debug(`remoteEntityList:`);
     // console.debug(remoteEntityList);
     profiler?.insert(`finish step${step} (list remote)`);
@@ -1978,7 +2047,10 @@ export async function syncer(
     await notifyFunc?.(triggerSource, step);
     await ribboonFunc?.(triggerSource, step);
     await statusBarFunc?.(triggerSource, step, everythingOk);
+    hooks?.onPhase?.("local");
     const localEntityList = await fsLocal.walk();
+    const originalLocal=entityFingerprint(localEntityList);
+    const originalRemote=entityFingerprint(remoteEntityList);
     // console.debug(`localEntityList:`);
     // console.debug(localEntityList);
     profiler?.insert(`finish step${step} (list local)`);
@@ -2000,35 +2072,22 @@ export async function syncer(
     await notifyFunc?.(triggerSource, step);
     await ribboonFunc?.(triggerSource, step);
     await statusBarFunc?.(triggerSource, step, everythingOk);
-    let mixedEntityMappings = await ensembleMixedEnties(
+    hooks?.onPhase?.("planning");
+    const mixedEntityMappings = await buildSyncPlan({
       localEntityList,
       prevSyncEntityList,
       remoteEntityList,
-      settings.syncConfigDir ?? false,
-      settings.syncBookmarks ?? false,
-      configDir,
-      settings.syncUnderscoreItems ?? false,
-      settings.ignorePaths ?? [],
-      settings.onlyAllowPaths ?? [],
       fsEncrypt,
-      settings.serviceType,
-      profiler
-    );
-    profiler?.insert(`finish step${step} (build partial mixedEntity)`);
-
-    mixedEntityMappings = await getSyncPlanInplace(
-      mixedEntityMappings,
-      settings.skipSizeLargerThan ?? -1,
-      settings.conflictAction ?? "keep_newer",
-      settings.syncDirection ?? "bidirectional",
-      profiler,
       settings,
       triggerSource,
-      configDir
-    );
+      configDir,
+      profiler,
+    });
     console.debug(`mixedEntityMappings:`);
     console.debug(mixedEntityMappings); // for debugging
     profiler?.insert("finish building full sync plan");
+
+    hooks?.preparePlan?.(mixedEntityMappings);
 
     await insertSyncPlanRecordByVault(
       db,
@@ -2060,10 +2119,26 @@ export async function syncer(
         profiler,
         settings.conflictAction ?? "keep_newer",
         triggerSource,
-        callbackSyncProcess
+        callbackSyncProcess,
+        hooks ? {
+          onPlan: hooks.onPlan,
+          validatePlan:hooks.validatePlan,
+          onTask: hooks.onTask,
+          guard:hooks.guard,
+          checkpoint:hooks.checkpoint,
+          authorizeLargeChanges:async request=>{
+            if(!hooks.authorizeLargeChanges || !await hooks.authorizeLargeChanges(request))return false;
+            hooks.guard?.();
+            if(originalLocal!==entityFingerprint(await fsLocal.walk()) || originalRemote!==entityFingerprint(await fsEncrypt.walk()))
+              throw new SyncProtectionError("plan_changed",request);
+            hooks.guard?.();return true;
+          }
+        } : undefined
       );
       profiler?.insert(`finish step${step} (actual sync)`);
     } else {
+      hooks?.onPlan?.(summarizeSyncPlan(mixedEntityMappings));
+      hooks?.validatePlan?.(mixedEntityMappings);
       await notifyFunc?.(triggerSource, step);
       await ribboonFunc?.(triggerSource, step);
       await statusBarFunc?.(triggerSource, step, everythingOk);

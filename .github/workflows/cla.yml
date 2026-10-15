@@ -14,6 +14,8 @@ permissions:
 
 jobs:
   CLAAssistant:
+    # Upstream-only agreement automation; disabled for this independent project.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     steps:
       - name: "CLA Assistant"

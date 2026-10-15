@@ -4,11 +4,12 @@
 
 # npm
 node_modules
-package-lock.json
 pnpm-lock.yaml
 
 # build
 main.js
+*.main.js
+dist/
 *.js.map
 
 # obsidian
@@ -16,6 +17,8 @@ data.json
 
 # debug
 logs.txt
+cloudflared.html
 
 # hidden files
 .*
+!.nvmrc

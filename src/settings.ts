@@ -1,3 +1,17 @@
+import {renderBaiduQrTest} from './settingsBaiduQr';
+import {BaiduQrLoginModal,verifyBaiduQrSession} from './native/settingsBaiduQr';
+import { renderSimpleAliyun } from "./settingsAliyunSimple";
+import { AliyunLoginModal } from "./native/settingsAliyun";
+import { AliyunClient } from "./native/aliyunClient";
+import { getAliyunPluginTransport } from "./native/aliyunService";
+import { renderSimpleQuark } from "./settingsQuarkSimple";
+import { QuarkLoginModal } from "./native/settingsQuark";
+import { QuarkClient } from "./native/quarkClient";
+import { getQuarkPluginTransport } from "./native/quarkService";
+import { renderSimpleWebdav } from "./settingsWebdavSimple";
+import { createSettingsSection, getServiceChoices } from "./settingsLayout";
+import { generateBaiduConnectionSettings } from "./native/settingsBaidu";
+import { generateQuarkSettings } from "./native/settingsQuark";
 import { Eye, EyeOff, createElement } from "lucide";
 import {
   type App,
@@ -829,8 +843,39 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
     this.plugin = plugin;
   }
 
+  private simpleCleanup?: () => void;
   display(): void {
-    const { containerEl } = this;
+    this.simpleCleanup?.();
+    this.containerEl.empty();
+    if(this.plugin.settings.serviceType === "webdav") {
+      this.simpleCleanup=renderSimpleWebdav(this.containerEl,this.plugin,
+        parent=>this.renderLegacy(parent,true),()=>this.display(),Platform.isDesktopApp);
+      return;
+    }
+    if(this.plugin.settings.serviceType === "baidu") {
+      this.simpleCleanup=renderBaiduQrTest(this.containerEl,this.plugin,{
+        openLogin:done=>{const modal=new BaiduQrLoginModal(this.plugin,done);modal.open();return ()=>modal.close();},
+        verify:root=>verifyBaiduQrSession(this.plugin,root)
+      },Platform.isDesktopApp,()=>this.display());
+      return;
+    }
+    if(this.plugin.settings.serviceType === "aliyun") {
+      this.simpleCleanup=renderSimpleAliyun(this.containerEl,this.plugin,{
+        openLogin:done=>{const modal=new AliyunLoginModal(this.plugin,done);modal.open();return ()=>modal.close();},
+        prepare:async(config,guard,saveSession)=>{let current=config;const client=new AliyunClient(getAliyunPluginTransport(this.plugin),()=>current,guard,async session=>{await saveSession(session);current={...current,session};});await client.prepareRoot();await client.scan();const overwriteVerified=await client.verifyOverwrite();guard();return {...current,overwriteVerified};}
+      },parent=>this.renderLegacy(parent,true),()=>this.display(),Platform.isDesktopApp);
+      return;
+    }
+    if(this.plugin.settings.serviceType === "quark") {
+      this.simpleCleanup=renderSimpleQuark(this.containerEl,this.plugin, {
+        openLogin:done=>{ const modal=new QuarkLoginModal(this.plugin,done);modal.open();return ()=>modal.close(); },
+        prepare:async(config,guard)=>{const client=new QuarkClient(getQuarkPluginTransport(this.plugin),()=>config,guard);await client.prepareRoot();await client.scan();const overwriteVerified=await client.verifyOverwrite();guard();return {...config,overwriteVerified};}
+      },parent=>this.renderLegacy(parent,true),()=>this.display(),Platform.isDesktopApp);
+      return;
+    }
+    this.renderLegacy(this.containerEl);
+  }
+  private renderLegacy(containerEl: HTMLElement, advancedOnly=false): void {
     containerEl.style.setProperty("overflow-wrap", "break-word");
 
     containerEl.empty();
@@ -839,7 +884,7 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
       return this.plugin.i18n.t(x, vars);
     };
 
-    containerEl.createEl("h1", { text: "Remotely Save" });
+    if(!advancedOnly)containerEl.createEl("h1", { text: this.plugin.manifest.name });
 
     //////////////////////////////////////////////////
     // below for service chooser (part 1/2)
@@ -847,7 +892,10 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
 
     // we need to create the div in advance of any other service divs
     const serviceChooserDiv = containerEl.createDiv();
+    serviceChooserDiv.hidden=advancedOnly;
     serviceChooserDiv.createEl("h2", { text: t("settings_chooseservice") });
+    generateBaiduConnectionSettings(serviceChooserDiv, this.plugin);
+    generateQuarkSettings(serviceChooserDiv, this.plugin);
 
     //////////////////////////////////////////////////
     // below for s3
@@ -1592,7 +1640,16 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
           });
       });
 
-    new Setting(webdavDiv)
+    const webdavAdvancedDiv = createSettingsSection(
+      webdavDiv,
+      t("settings_webdav_advanced")
+    );
+    if(advancedOnly){
+      const wrapper=webdavAdvancedDiv.parentElement as HTMLDetailsElement;
+      for(const child of Array.from(wrapper.parentElement!.children))if(child!==wrapper)(child as HTMLElement).hidden=true;
+      wrapper.open=true;
+    }
+    new Setting(webdavAdvancedDiv)
       .setName(t("settings_webdav_auth"))
       .setDesc(t("settings_webdav_auth_desc"))
       .addDropdown(async (dropdown) => {
@@ -1615,7 +1672,7 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
           });
       });
 
-    new Setting(webdavDiv)
+    new Setting(webdavAdvancedDiv)
       .setName(t("settings_webdav_depth"))
       .setDesc(t("settings_webdav_depth_desc"))
       .addDropdown((dropdown) => {
@@ -1638,7 +1695,7 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
           });
       });
 
-    new Setting(webdavDiv)
+    new Setting(webdavAdvancedDiv)
       .setName(t("settings_webdav_customheaders"))
       .setDesc(stringToFragment(t("settings_webdav_customheaders_desc")))
       .addTextArea((textArea) => {
@@ -1933,47 +1990,45 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
     // below for general chooser (part 2/2)
     //////////////////////////////////////////////////
 
+    if (
+      !["webdav", "baidu", "quark", "aliyun"].includes(this.plugin.settings.serviceType) ||
+      this.plugin.settings.legacyServiceType
+    ) {
+      serviceChooserDiv.createEl("p", {
+        text: t("settings_legacy_service_notice"),
+      });
+    }
+
     // we need to create chooser
     // after all service-div-s being created
     new Setting(serviceChooserDiv)
       .setName(t("settings_chooseservice"))
       .setDesc(t("settings_chooseservice_desc"))
       .addDropdown(async (dropdown) => {
-        dropdown.addOption("s3", t("settings_chooseservice_s3"));
-        dropdown.addOption("dropbox", t("settings_chooseservice_dropbox"));
-        dropdown.addOption("webdav", t("settings_chooseservice_webdav"));
-        dropdown.addOption("onedrive", t("settings_chooseservice_onedrive"));
-        dropdown.addOption("webdis", t("settings_chooseservice_webdis"));
-
-        dropdown.addOption("separator line", "-----");
-        (dropdown.selectEl.lastChild as HTMLElement).setAttribute(
-          "disabled",
-          "disabled"
-        );
-
-        dropdown.addOption(
-          "googledrive",
-          t("settings_chooseservice_googledrive")
-        );
-        dropdown.addOption(
-          "onedrivefull",
-          t("settings_chooseservice_onedrivefull")
-        );
-        dropdown.addOption("box", t("settings_chooseservice_box"));
-        dropdown.addOption("pcloud", t("settings_chooseservice_pcloud"));
-        dropdown.addOption(
-          "yandexdisk",
-          t("settings_chooseservice_yandexdisk")
-        );
-        dropdown.addOption("koofr", t("settings_chooseservice_koofr"));
-        dropdown.addOption(
-          "azureblobstorage",
-          t("settings_chooseservice_azureblobstorage")
-        );
+        for (const service of getServiceChoices(
+          this.plugin.settings.serviceType,
+          this.plugin.settings.legacyServiceType,
+          Platform.isDesktopApp
+        )) {
+          dropdown.addOption(
+            service,
+            service === "baidu"
+              ? "百度网盘（桌面实验）"
+              : service === "aliyun" ? "阿里云盘（桌面实验）"
+              : service === "quark" ? "夸克网盘（桌面实验）"
+              : t(`settings_chooseservice_${service}` as TransItemType)
+          );
+        }
 
         dropdown
           .setValue(this.plugin.settings.serviceType)
           .onChange(async (val) => {
+            if (
+              !["webdav", "baidu", "quark", "aliyun"].includes(this.plugin.settings.serviceType)
+            ) {
+              this.plugin.settings.legacyServiceType =
+                this.plugin.settings.serviceType;
+            }
             this.plugin.settings.serviceType = val as SUPPORTED_SERVICES_TYPE;
             s3Div.toggleClass(
               "s3-hide",
@@ -2025,6 +2080,7 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
             );
 
             await this.plugin.saveSettings();
+            this.display();
           });
       });
 
@@ -2085,7 +2141,9 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
           });
       });
 
-    new Setting(basicDiv)
+    const automationDiv = basicDiv.createDiv();
+    automationDiv.hidden = advancedOnly || ["baidu", "quark", "aliyun"].includes(this.plugin.settings.serviceType);
+    new Setting(automationDiv)
       .setName(t("settings_autorun"))
       .setDesc(t("settings_autorun_desc"))
       .addDropdown((dropdown) => {
@@ -2123,7 +2181,7 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
           });
       });
 
-    new Setting(basicDiv)
+    new Setting(automationDiv)
       .setName(t("settings_runoncestartup"))
       .setDesc(t("settings_runoncestartup_desc"))
       .addDropdown((dropdown) => {
@@ -2149,7 +2207,7 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
           });
       });
 
-    new Setting(basicDiv)
+    new Setting(automationDiv)
       .setName(t("settings_synconsave"))
       .setDesc(t("settings_synconsave_desc"))
       .addDropdown((dropdown) => {
@@ -2170,7 +2228,12 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
           });
       });
 
-    new Setting(basicDiv)
+    //////////////////////////////////////////////////
+    // below for advanced settings
+    //////////////////////////////////////////////////
+    const advDiv = createSettingsSection(containerEl, t("settings_adv"));
+
+    new Setting(advDiv)
       .setName(t("settings_skiplargefiles"))
       .setDesc(t("settings_skiplargefiles_desc"))
       .addDropdown((dropdown) => {
@@ -2190,7 +2253,7 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
 
     // custom status bar items is not supported on mobile
     if (!Platform.isMobileApp) {
-      new Setting(basicDiv)
+      new Setting(advDiv)
         .setName(t("settings_enablestatusbar_info"))
         .setDesc(t("settings_enablestatusbar_info_desc"))
         .addToggle((toggle) => {
@@ -2203,7 +2266,7 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
             });
         });
 
-      new Setting(basicDiv)
+      new Setting(advDiv)
         .setName(t("settings_resetstatusbar_time"))
         .setDesc(t("settings_resetstatusbar_time_desc"))
         .addButton((button) => {
@@ -2226,7 +2289,7 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
         });
     }
 
-    new Setting(basicDiv)
+    new Setting(advDiv)
       .setName(t("settings_ignorepaths"))
       .setDesc(t("settings_ignorepaths_desc"))
       .setClass("ignorepaths-settings")
@@ -2247,7 +2310,7 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
         textArea.inputEl.addClass("ignorepaths-textarea");
       });
 
-    new Setting(basicDiv)
+    new Setting(advDiv)
       .setName(t("settings_onlyallowpaths"))
       .setDesc(t("settings_onlyallowpaths_desc"))
       .setClass("onlyallowpaths-settings")
@@ -2267,14 +2330,6 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
 
         textArea.inputEl.addClass("onlyallowpaths-textarea");
       });
-
-    //////////////////////////////////////////////////
-    // below for advanced settings
-    //////////////////////////////////////////////////
-    const advDiv = containerEl.createEl("div");
-    advDiv.createEl("h2", {
-      text: t("settings_adv"),
-    });
 
     new Setting(advDiv)
       .setName(t("settings_concurrency"))
@@ -2395,6 +2450,7 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
     const conflictActionSetting = new Setting(advDiv)
       .setName(t("settings_conflictaction"))
       .setDesc(stringToFragment(conflictActionSettingOrigDesc));
+    conflictActionSetting.settingEl.hidden=advancedOnly;
     conflictActionSetting.addDropdown((dropdown) => {
       dropdown
         .addOption("keep_newer", t("settings_conflictaction_keep_newer"))
@@ -2497,7 +2553,7 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
       });
     });
 
-    new Setting(advDiv)
+    new Setting(basicDiv)
       .setName(t("setting_syncdirection"))
       .setDesc(stringToFragment(t("setting_syncdirection_desc")))
       .addDropdown((dropdown) => {
@@ -2571,10 +2627,10 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
     //////////////////////////////////////////////////
 
     // import and export
-    const importExportDiv = containerEl.createEl("div");
-    importExportDiv.createEl("h2", {
-      text: t("settings_importexport"),
-    });
+    const importExportDiv = createSettingsSection(
+      containerEl,
+      t("settings_importexport")
+    );
 
     const importExportDivSetting1 = new Setting(importExportDiv)
       .setName(t("settings_export"))
@@ -2694,7 +2750,7 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
       .setDesc(t("settings_import_desc"))
       .addText((text) =>
         text
-          .setPlaceholder("obsidian://remotely-save?func=settings&...")
+          .setPlaceholder("obsidian://remotely-save-next?func=settings&...")
           .setValue("")
           .onChange((val) => {
             importSettingVal = val;
@@ -2744,7 +2800,13 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
     // below for pro
     //////////////////////////////////////////////////
 
-    const proDiv = containerEl.createEl("div");
+    const proDiv = createSettingsSection(
+      containerEl,
+      t("settings_account_options")
+    );
+    proDiv.parentElement!.hidden = ["webdav", "baidu", "quark", "aliyun"].includes(
+      this.plugin.settings.serviceType
+    );
     generateProSettingsPart(
       proDiv,
       t,
@@ -2771,8 +2833,7 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
     // below for debug
     //////////////////////////////////////////////////
 
-    const debugDiv = containerEl.createEl("div");
-    debugDiv.createEl("h2", { text: t("settings_debug") });
+    const debugDiv = createSettingsSection(containerEl, t("settings_debug"));
 
     new Setting(debugDiv)
       .setName(t("settings_debuglevel"))
@@ -3019,9 +3080,14 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
           this.plugin.unload();
         });
       });
+    if(advancedOnly){
+      const section=webdavAdvancedDiv.parentElement;
+      for(const child of Array.from(webdavDiv.children))if(child!==section)(child as HTMLElement).hidden=true;
+    }
   }
 
   hide() {
+    this.simpleCleanup?.();this.simpleCleanup=undefined;
     const { containerEl } = this;
     containerEl.empty();
     super.hide();
