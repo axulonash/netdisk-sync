@@ -10,7 +10,7 @@ import { QuarkClient } from "./native/quarkClient";
 import { getQuarkPluginTransport } from "./native/quarkService";
 import { renderSimpleWebdav } from "./settingsWebdavSimple";
 import { createSettingsSection, getServiceChoices } from "./settingsLayout";
-import { renderBasicSection } from "./settingsSections";
+import { renderAdvancedSection, renderBasicSection } from "./settingsSections";
 import { generateBaiduConnectionSettings } from "./native/settingsBaidu";
 import { generateQuarkSettings } from "./native/settingsQuark";
 import { Eye, EyeOff, createElement } from "lucide";
@@ -2158,26 +2158,10 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
         });
     }
 
-    new Setting(advDiv)
-      .setName(t("settings_ignorepaths"))
-      .setDesc(t("settings_ignorepaths_desc"))
-      .setClass("ignorepaths-settings")
-
-      .addTextArea((textArea) => {
-        textArea
-          .setValue(`${(this.plugin.settings.ignorePaths ?? []).join("\n")}`)
-          .onChange(async (value) => {
-            this.plugin.settings.ignorePaths = value
-              .trim()
-              .split("\n")
-              .filter((x) => x.trim() !== "");
-            await this.plugin.saveSettings();
-          });
-        textArea.inputEl.rows = 10;
-        textArea.inputEl.cols = 30;
-
-        textArea.inputEl.addClass("ignorepaths-textarea");
-      });
+    renderAdvancedSection(advDiv, this.plugin, {
+      desktop: Platform.isDesktopApp,
+      redisplay: () => this.display(),
+    });
 
     new Setting(advDiv)
       .setName(t("settings_onlyallowpaths"))
@@ -2234,39 +2218,6 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
           .onChange(async (val) => {
             this.plugin.settings.syncUnderscoreItems = val === "enable";
             await this.plugin.saveSettings();
-          });
-      });
-
-    new Setting(advDiv)
-      .setName(t("settings_configdir"))
-      .setDesc(
-        t("settings_configdir_desc", {
-          configDir: this.app.vault.configDir,
-        })
-      )
-      .addDropdown((dropdown) => {
-        dropdown.addOption("disable", t("disable"));
-        dropdown.addOption("enable", t("enable"));
-
-        const bridge = {
-          secondConfirm: false,
-        };
-        dropdown
-          .setValue(
-            `${this.plugin.settings.syncConfigDir ? "enable" : "disable"}`
-          )
-          .onChange(async (val) => {
-            if (val === "enable" && !bridge.secondConfirm) {
-              dropdown.setValue("disable");
-              new SyncConfigDirModal(this.app, this.plugin, () => {
-                bridge.secondConfirm = true;
-                dropdown.setValue("enable");
-              }).open();
-            } else {
-              bridge.secondConfirm = false;
-              this.plugin.settings.syncConfigDir = false;
-              await this.plugin.saveSettings();
-            }
           });
       });
 

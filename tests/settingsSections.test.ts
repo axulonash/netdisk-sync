@@ -1,6 +1,10 @@
 import { strict as assert } from "assert";
 import { JSDOM } from "jsdom";
-import { openInlineExclusive, renderBasicSection } from "../src/settingsSections";
+import {
+  openInlineExclusive,
+  renderAdvancedSection,
+  renderBasicSection,
+} from "../src/settingsSections";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -175,5 +179,113 @@ describe("renderBasicSection", () => {
   it("hides the encryption-method row when no password is set", () => {
     const f = fixture();
     assert.ok(f.rowFor("settings_encryptionmethod")!.classList.contains("settings-encryption-method-hide"));
+  });
+});
+
+function advancedFixture(
+  settings: Record<string, unknown> = {},
+  opts: Record<string, unknown> = {}
+) {
+  const dom = new JSDOM("<div id='host'></div>");
+  const host = dom.window.document.getElementById("host")!;
+  const calls: string[] = [];
+  const plugin: any = {
+    settings: {
+      ignorePaths: [],
+      syncConfigDir: false,
+      ...settings,
+    },
+    app: { vault: { configDir: ".obsidian" } },
+    i18n: { t: (key: string) => key },
+    saveSettings: async () => {
+      calls.push("save");
+    },
+  };
+  renderAdvancedSection(host, plugin, {
+    desktop: opts.desktop !== false,
+    redisplay: () => {
+      calls.push("redisplay");
+    },
+  });
+  const rows = Array.from(host.querySelectorAll(".rsnext-row")) as HTMLElement[];
+  const rowFor = (key: string) =>
+    rows.find((r) => r.querySelector("label")?.textContent === key);
+  const buttonIn = (row: HTMLElement, text: string) =>
+    Array.from(row.querySelectorAll("button")).find((b) => b.textContent === text);
+  return { dom, host, plugin, calls, rows, rowFor, buttonIn };
+}
+
+describe("renderAdvancedSection", () => {
+  it("renders the ignore-paths editor and saves the parsed list", async () => {
+    const f = advancedFixture({ ignorePaths: ["a"] });
+    const row = f.rowFor("settings_ignorepaths")!;
+    const ta = row.querySelector("textarea") as HTMLTextAreaElement;
+    assert.ok(ta);
+    assert.equal(ta.value, "a");
+    ta.value = "a\nb";
+    ta.dispatchEvent(new f.dom.window.Event("input"));
+    await tick();
+    assert.deepEqual(f.plugin.settings.ignorePaths, ["a", "b"]);
+    assert.deepEqual(f.calls, ["save"]);
+  });
+
+  it("opens the sync-config-dir inline confirm and saves only on second confirm", async () => {
+    const f = advancedFixture();
+    const row = f.rowFor("settings_configdir")!;
+    const select = row.querySelector("select") as HTMLSelectElement;
+    assert.equal(select.value, "disable");
+    select.value = "enable";
+    select.dispatchEvent(new f.dom.window.Event("change"));
+    await tick();
+    // reverted to disabled and an inline confirm block opened; nothing persisted yet
+    assert.equal(select.value, "disable");
+    assert.equal(f.plugin.settings.syncConfigDir, false);
+    assert.deepEqual(f.calls, []);
+    assert.ok(row.textContent!.includes("modal_syncconfig_attn"));
+    f.buttonIn(row, "modal_syncconfig_secondconfirm")!.click();
+    await tick();
+    assert.equal(f.plugin.settings.syncConfigDir, true);
+    assert.deepEqual(f.calls, ["save"]);
+    assert.equal(select.value, "enable");
+  });
+
+  it("keeps only one inline editor open across basic and advanced sections", async () => {
+    const dom = new JSDOM("<div id='basic'></div><div id='adv'></div>");
+    const basic = dom.window.document.getElementById("basic")!;
+    const adv = dom.window.document.getElementById("adv")!;
+    const plugin: any = {
+      settings: {
+        password: "",
+        encryptionMethod: "rclone-base64",
+        ignorePaths: [],
+        syncConfigDir: false,
+      },
+      app: { vault: { configDir: ".obsidian" } },
+      i18n: { t: (key: string) => key },
+      saveSettings: async () => {},
+    };
+    renderBasicSection(basic, plugin, {
+      advancedOnly: false,
+      showAutomation: true,
+      redisplay: () => {},
+    });
+    renderAdvancedSection(adv, plugin, { desktop: true, redisplay: () => {} });
+    const rowIn = (root: HTMLElement, key: string) =>
+      Array.from(root.querySelectorAll(".rsnext-row")).find(
+        (r) => r.querySelector("label")?.textContent === key
+      ) as HTMLElement;
+    const password = rowIn(basic, "settings_password");
+    Array.from(password.querySelectorAll("button"))
+      .find((b) => b.textContent === "修改")!
+      .click();
+    assert.ok(password.querySelector("input[type=password]"));
+
+    const configDir = rowIn(adv, "settings_configdir");
+    const select = configDir.querySelector("select") as HTMLSelectElement;
+    select.value = "enable";
+    select.dispatchEvent(new dom.window.Event("change"));
+    // opening the advanced inline block closed the password one
+    assert.equal(password.querySelector("input[type=password]"), null);
+    assert.ok(configDir.textContent!.includes("modal_syncconfig_attn"));
   });
 });

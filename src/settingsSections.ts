@@ -293,3 +293,105 @@ export function renderBasicSection(
   };
   row(t("settings_synconsave"), synconsave, t("settings_synconsave_desc"));
 }
+
+/**
+ * Native advanced-section rows shared by the legacy tab (single source of truth
+ * until renderLegacy is removed): the ignore-paths textarea (one regex per
+ * line) and the sync-config-dir toggle. The latter carries the legacy
+ * SyncConfigDirModal copy inline: selecting "enable" reverts the dropdown and
+ * opens the modal's attn copy + second-confirm / go-back buttons in place.
+ */
+export function renderAdvancedSection(
+  el: HTMLElement,
+  plugin: RemotelySavePlugin,
+  opts: { desktop: boolean; redisplay: () => void }
+): void {
+  const doc = el.ownerDocument;
+  const t = (key: TransItemType, vars?: Record<string, string>) =>
+    plugin.i18n.t(key, vars);
+  const node = <K extends keyof HTMLElementTagNameMap>(
+    tag: K,
+    text = "",
+    cls = ""
+  ) => {
+    const n = doc.createElement(tag);
+    n.textContent = text;
+    n.className = cls;
+    return n;
+  };
+
+  const row = (name: string, control: HTMLElement, desc?: Node | string) => {
+    const box = node("div", "", "rsnext-row");
+    const controlBox = node("div", "", "rsnext-control");
+    const inline = node("div", "", "rsnext-inline");
+    controlBox.append(control, inline);
+    box.append(node("label", name), controlBox);
+    if (desc) {
+      const hint = node("small");
+      if (typeof desc === "string") hint.textContent = desc;
+      else hint.append(desc);
+      box.append(hint);
+    }
+    el.append(box);
+    return { box, inline };
+  };
+
+  const ignorePaths = doc.createElement("textarea");
+  ignorePaths.className = "ignorepaths-textarea";
+  ignorePaths.rows = 10;
+  ignorePaths.cols = 30;
+  ignorePaths.value = (plugin.settings.ignorePaths ?? []).join("\n");
+  ignorePaths.oninput = async () => {
+    plugin.settings.ignorePaths = ignorePaths.value
+      .trim()
+      .split("\n")
+      .filter((x) => x.trim() !== "");
+    await plugin.saveSettings();
+  };
+  row(t("settings_ignorepaths"), ignorePaths, t("settings_ignorepaths_desc"));
+
+  const dropdown = doc.createElement("select");
+  for (const [value, key] of [
+    ["disable", "disable"],
+    ["enable", "enable"],
+  ] as [string, TransItemType][]) {
+    const option = doc.createElement("option");
+    option.value = value;
+    option.textContent = t(key);
+    dropdown.append(option);
+  }
+  dropdown.value = `${plugin.settings.syncConfigDir ? "enable" : "disable"}`;
+  const configRow = row(
+    t("settings_configdir"),
+    dropdown,
+    t("settings_configdir_desc", { configDir: plugin.app.vault.configDir })
+  );
+  let secondConfirm = false;
+  dropdown.onchange = () => {
+    if (dropdown.value === "enable" && !secondConfirm) {
+      dropdown.value = "disable";
+      openInlineExclusive(configRow.inline, (host) => {
+        for (const line of t("modal_syncconfig_attn").split("\n")) {
+          host.append(node("p", line));
+        }
+        const confirm = node("button", t("modal_syncconfig_secondconfirm"));
+        const back = node("button", t("goback"));
+        confirm.onclick = async () => {
+          plugin.settings.syncConfigDir = true;
+          await plugin.saveSettings();
+          secondConfirm = true;
+          dropdown.value = "enable";
+          host.replaceChildren(
+            node("p", t("modal_syncconfig_notice"), "rsnext-inline-notice")
+          );
+        };
+        back.onclick = () => host.replaceChildren();
+        host.append(confirm, back);
+      });
+    } else {
+      secondConfirm = false;
+      plugin.settings.syncConfigDir = false;
+      void plugin.saveSettings();
+    }
+  };
+}
