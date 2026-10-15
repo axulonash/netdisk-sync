@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Remotely Save Next — UI 重设计方案</title>
+<style>
+  :root {
+    --bg: #f6f6f7; --card: #ffffff; --text: #1f2328; --muted: #6b7280;
+    --border: #e3e3e6; --accent: #6b4bc3; --hover: #faf9fd;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1e1e20; --card: #262629; --text: #e6e6e8; --muted: #9ca3af;
+            --border: #3a3a3f; --accent: #9d85e8; --hover: #2c2c30; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 48px 24px; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  .sub { color: var(--muted); margin: 0 0 32px; font-size: 14px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  a.card {
+    display: block; background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px; text-decoration: none; color: inherit;
+    transition: border-color .15s, background .15s;
+  }
+  a.card:hover { border-color: var(--accent); background: var(--hover); }
+  .num { font-size: 12px; color: var(--accent); font-weight: 600; letter-spacing: .05em; }
+  .card h2 { font-size: 17px; margin: 6px 0 8px; }
+  .card p { font-size: 13.5px; color: var(--muted); margin: 0 0 12px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag { font-size: 11.5px; padding: 2px 8px; border: 1px solid var(--border);
+         border-radius: 99px; color: var(--muted); }
+  .note { margin-top: 32px; font-size: 13px; color: var(--muted);
+          border-top: 1px solid var(--border); padding-top: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Remotely Save Next — UI 重设计方案</h1>
+  <p class="sub">4 套可交互原型（交互结构 + 视觉均不同），每套含：设置主页 · 同步进度 · 同步记录。点任意卡片在新标签页打开，原型内可切换明暗主题与运行状态。</p>
+  <div class="grid">
+    <a class="card" href="scheme-1.html" target="_blank">
+      <span class="num">方案 1</span>
+      <h2>工作台导航</h2>
+      <p>左侧常驻服务导航栏 + 右侧内容面板，类桌面应用设置页；同步进度内嵌右栏，不打断当前视图。</p>
+      <div class="tags"><span class="tag">左栏导航</span><span class="tag">内嵌进度</span><span class="tag">紧凑密度</span></div>
+    </a>
+    <a class="card" href="scheme-2.html" target="_blank">
+      <span class="num">方案 2</span>
+      <h2>状态卡片向导</h2>
+      <p>首页一张状态大卡回答“我现在同步状态如何”，未配置走三步连接向导；进度全屏接管，记录为时间线。</p>
+      <div class="tags"><span class="tag">状态大卡</span><span class="tag">引导式</span><span class="tag">时间线记录</span></div>
+    </a>
+    <a class="card" href="scheme-3.html" target="_blank">
+      <span class="num">方案 3</span>
+      <h2>仪表盘监控</h2>
+      <p>数据瓦片 + 活动趋势条，服务用顶部 tab 切换；进度为常驻底部 dock，记录为可筛选数据表格。</p>
+      <div class="tags"><span class="tag">仪表盘</span><span class="tag">底部 dock</span><span class="tag">表格记录</span></div>
+    </a>
+    <a class="card" href="scheme-4.html" target="_blank">
+      <span class="num">方案 4</span>
+      <h2>原生极简</h2>
+      <p>完全对齐 Obsidian 原生设置规范：原生行式布局、单页手风琴，消灭全部模态框（登录/加密改为行内展开）。</p>
+      <div class="tags"><span class="tag">零模态</span><span class="tag">单页滚动</span><span class="tag">原生观感</span></div>
+    </a>
+  </div>
+  <p class="note">每套原型右下角有「交互说明」面板，列出其与当前插件交互逻辑的差异点，便于对比。</p>
+</div>
+</body>
+</html>

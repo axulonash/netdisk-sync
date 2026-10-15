@@ -1,0 +1,1262 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>remotely-save-next · 方案3「仪表盘监控」</title>
+<style>
+:root{
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Consolas, "Liberation Mono", monospace;
+  --r: 10px;
+}
+html[data-theme="dark"]{
+  color-scheme: dark;
+  --bg:#0b0e11; --bg-grid:rgba(255,255,255,.022); --glow:rgba(47,224,192,.07);
+  --panel:#12161a; --panel-2:#171c21; --panel-3:#1e242a;
+  --line:#232a31; --line-2:#313a43;
+  --text:#e3e9ee; --muted:#94a2af; --faint:#5f6c78;
+  --accent:#2fe0c0; --accent-ink:#04231f; --accent-soft:rgba(47,224,192,.13);
+  --ok:#3fd77f; --ok-soft:rgba(63,215,127,.13);
+  --warn:#f2b436; --warn-soft:rgba(242,180,54,.14);
+  --err:#ff5d78; --err-soft:rgba(255,93,120,.13);
+  --info:#6aa8ff; --info-soft:rgba(106,168,255,.13);
+  --shadow:0 24px 60px rgba(0,0,0,.55);
+}
+html[data-theme="light"]{
+  color-scheme: light;
+  --bg:#eceff2; --bg-grid:rgba(20,40,60,.03); --glow:rgba(13,148,136,.09);
+  --panel:#ffffff; --panel-2:#f4f7f9; --panel-3:#eaeff3;
+  --line:#dfe5eb; --line-2:#c9d3dc;
+  --text:#141a20; --muted:#5a6a78; --faint:#8895a2;
+  --accent:#0e9384; --accent-ink:#ffffff; --accent-soft:rgba(14,147,132,.12);
+  --ok:#128a4c; --ok-soft:rgba(18,138,76,.12);
+  --warn:#ad6800; --warn-soft:rgba(173,104,0,.13);
+  --err:#d52848; --err-soft:rgba(213,40,72,.11);
+  --info:#2563eb; --info-soft:rgba(37,99,235,.11);
+  --shadow:0 18px 44px rgba(20,35,50,.14);
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{
+  margin:0; color:var(--text); font:13px/1.55 var(--sans);
+  background:
+    radial-gradient(1100px 520px at 50% -8%, var(--glow), transparent 62%),
+    repeating-linear-gradient(0deg, var(--bg-grid) 0 1px, transparent 1px 34px),
+    repeating-linear-gradient(90deg, var(--bg-grid) 0 1px, transparent 1px 34px),
+    var(--bg);
+  background-attachment: fixed;
+  -webkit-font-smoothing:antialiased;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.num{font-variant-numeric:tabular-nums;font-family:var(--mono)}
+svg.ic{display:block;flex:none}
+
+/* ---------- preview toolbar (prototype chrome, outside the faux app) ---------- */
+.toolbar{max-width:1084px;margin:20px auto 12px;padding:0 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.toolbar .brand{display:flex;align-items:baseline;gap:9px;margin-right:auto}
+.toolbar .brand b{font-size:13px;font-weight:650;letter-spacing:.2px}
+.toolbar .brand span{font-size:11.5px;color:var(--muted)}
+.tb-group{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted)}
+.tb-group select,.tb-group button{height:30px;border:1px solid var(--line-2);background:var(--panel);border-radius:7px;padding:0 10px;font-size:12px}
+.tb-group button{display:flex;align-items:center;gap:6px}
+.tb-group button:hover{border-color:var(--accent);color:var(--accent)}
+html[data-theme="dark"] .only-light{display:none}
+html[data-theme="light"] .only-dark{display:none}
+
+/* ---------- faux Obsidian window ---------- */
+.window{
+  max-width:1084px;margin:0 auto 28px;display:flex;flex-direction:column;
+  background:var(--panel);border:1px solid var(--line-2);border-radius:12px;overflow:hidden;
+  box-shadow:var(--shadow);height:min(830px, calc(100vh - 116px));min-height:620px;
+}
+.titlebar{display:flex;align-items:center;gap:12px;height:40px;padding:0 14px;background:var(--panel-2);border-bottom:1px solid var(--line);flex:none}
+.lights{display:flex;gap:7px}
+.lights i{width:11px;height:11px;border-radius:50%;background:var(--line-2)}
+.lights i:nth-child(1){background:#ff5f57}.lights i:nth-child(2){background:#febc2e}.lights i:nth-child(3){background:#28c840}
+.titlebar .ttl{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.titlebar .ttl b{color:var(--text);font-weight:600}
+.titlebar .path{margin-left:auto;font-size:11px;color:var(--faint);font-family:var(--mono);letter-spacing:.2px}
+
+.app{display:grid;grid-template-columns:206px minmax(0,1fr);flex:1;min-height:0}
+.obsidian-nav{background:var(--panel-2);border-right:1px solid var(--line);padding:16px 12px;overflow:auto}
+.obsidian-nav h3{margin:0 8px 10px;font-size:10.5px;letter-spacing:.9px;text-transform:uppercase;color:var(--faint);font-weight:600}
+.obsidian-nav p{margin:2px 0;padding:7px 10px;border-radius:7px;color:var(--muted);font-size:12.5px}
+.obsidian-nav p.active{background:var(--panel-3);color:var(--text);box-shadow:inset 2px 0 0 var(--accent)}
+.obsidian-nav .gap{height:16px}
+
+.pane{overflow:auto;min-height:0;scrollbar-width:thin}
+.pane-inner{max-width:760px;margin:0 auto;padding:22px 26px 34px}
+
+/* ---------- pane header ---------- */
+.pane-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.pane-head h1{margin:0;font-size:17px;font-weight:650;letter-spacing:-.2px}
+.status-pill{display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 11px;border-radius:20px;font-size:11.5px;border:1px solid var(--line-2);background:var(--panel-2);color:var(--muted);white-space:nowrap}
+.status-pill .dot{width:7px;height:7px;border-radius:50%;background:var(--muted);flex:none}
+.status-pill[data-tone="ok"] .dot{background:var(--ok);box-shadow:0 0 0 3px var(--ok-soft)}
+.status-pill[data-tone="sync"]{border-color:var(--accent);color:var(--accent)}
+.status-pill[data-tone="sync"] .dot{background:var(--accent);animation:pulse 1.1s ease-in-out infinite}
+.status-pill[data-tone="warn"]{border-color:var(--warn);color:var(--warn);background:var(--warn-soft)}
+.status-pill[data-tone="warn"] .dot{background:var(--warn)}
+.status-pill[data-tone="err"]{border-color:var(--err);color:var(--err);background:var(--err-soft)}
+.status-pill[data-tone="err"] .dot{background:var(--err)}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.7)}}
+.ph-actions{margin-left:auto;display:flex;gap:8px}
+.btn{height:32px;padding:0 13px;border-radius:8px;border:1px solid var(--line-2);background:var(--panel-2);display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;transition:border-color .13s,background-color .13s,color .13s}
+.btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.primary:hover:not(:disabled){filter:brightness(1.06);color:var(--accent-ink)}
+.btn.ghost{background:transparent}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+.banner{display:flex;align-items:center;gap:11px;margin-top:14px;padding:11px 13px;border-radius:var(--r);border:1px solid var(--line-2);background:var(--panel-2);font-size:12.5px}
+.banner[data-tone="warn"]{border-color:var(--warn);background:var(--warn-soft);color:var(--warn)}
+.banner[data-tone="err"]{border-color:var(--err);background:var(--err-soft);color:var(--err)}
+.banner .b-act{margin-left:auto;white-space:nowrap}
+.banner .b-act .btn{height:28px;font-size:12px;border-color:currentColor;background:transparent;color:inherit}
+
+/* ---------- primary nav ---------- */
+.primary-nav{display:flex;gap:2px;margin:18px 0 18px;padding:4px;border:1px solid var(--line);background:var(--panel-2);border-radius:var(--r);width:fit-content}
+.primary-nav button{border:0;background:transparent;padding:7px 15px;border-radius:7px;font-size:12.5px;color:var(--muted);display:inline-flex;align-items:center;gap:7px}
+.primary-nav button:hover{color:var(--text)}
+.primary-nav button[aria-selected="true"]{background:var(--panel-3);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+.primary-nav button[aria-selected="true"] svg{color:var(--accent)}
+
+/* ---------- tiles ---------- */
+.tiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:11px}
+.tile{border:1px solid var(--line);background:var(--panel-2);border-radius:var(--r);padding:13px 14px;position:relative;overflow:hidden;display:flex;flex-direction:column;gap:5px;min-height:100px}
+.tile::before{content:"";position:absolute;inset:0 auto 0 0;width:2px;background:var(--line-2)}
+.tile.live::before{background:var(--accent)}
+.tile.warn::before{background:var(--warn)}
+.tile.warn{border-color:var(--warn)}
+.tile.span3{grid-column:span 3}
+.tile.span2{grid-column:span 2}
+.tile .t-label{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);letter-spacing:.2px}
+.tile .t-label svg{color:var(--faint)}
+.tile .t-value{font-size:25px;line-height:1.08;font-weight:600;letter-spacing:-.5px;font-variant-numeric:tabular-nums;font-family:var(--mono)}
+.tile .t-value small{font-size:12px;color:var(--muted);font-weight:500;margin-left:3px;font-family:var(--sans)}
+.tile .t-sub{font-size:11.5px;color:var(--faint);margin-top:auto}
+.tile .t-sub em{font-style:normal;color:var(--accent)}
+.tile .t-split{display:flex;gap:18px}
+.tile .t-split>div{display:flex;flex-direction:column;gap:2px}
+.tile .t-split .v{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;font-family:var(--mono)}
+.tile .t-split .k{font-size:11px;color:var(--faint);display:flex;align-items:center;gap:4px}
+.flash{animation:flash .5s ease-out}
+@keyframes flash{0%{background:var(--accent-soft)}100%{background:transparent}}
+
+/* ---------- panel ---------- */
+.panel{border:1px solid var(--line);background:var(--panel-2);border-radius:var(--r);padding:14px 15px}
+.panel>header{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.panel>header h2{margin:0;font-size:12.5px;font-weight:600;letter-spacing:.2px}
+.panel>header .p-sub{font-size:11.5px;color:var(--faint)}
+.panel>header .sp{margin-left:auto;font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;font-family:var(--mono)}
+
+/* activity strip */
+.activity{margin-top:11px}
+.spark{display:flex;align-items:flex-end;gap:4px;height:60px}
+.spark .bar{flex:1;min-height:5px;border-radius:3px 3px 2px 2px;background:var(--line-2);position:relative;transition:background-color .15s,height .3s}
+.spark .bar:hover{background:var(--accent)}
+.spark .bar.today{background:linear-gradient(180deg,var(--accent),var(--accent-soft));box-shadow:0 0 12px var(--accent-soft)}
+.spark-axis{display:flex;gap:4px;margin-top:7px;font-size:10px;color:var(--faint);font-family:var(--mono)}
+.spark-axis span{flex:1;text-align:center}
+
+/* ---------- service tab bar ---------- */
+.svc-bar{display:flex;align-items:center;gap:4px;margin:20px 0 0;border-bottom:1px solid var(--line-2);overflow-x:auto}
+.svc-tab{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 13px;border:0;background:transparent;color:var(--muted);font-size:12.5px;border-bottom:2px solid transparent;white-space:nowrap;margin-bottom:-1px}
+.svc-tab:hover{color:var(--text)}
+.svc-tab[aria-selected="true"]{color:var(--text);border-bottom-color:var(--accent);font-weight:600}
+.svc-tab .clight{width:7px;height:7px;border-radius:50%;background:var(--muted);flex:none}
+.svc-tab .clight[data-state="success"]{background:var(--ok);box-shadow:0 0 0 3px var(--ok-soft)}
+.svc-tab .clight[data-state="failure"]{background:var(--err);box-shadow:0 0 0 3px var(--err-soft)}
+.svc-tab .clight[data-state="conflict"]{background:var(--warn);box-shadow:0 0 0 3px var(--warn-soft)}
+.svc-tab .clight[data-state="idle"]{background:var(--line-2);border:1px solid var(--faint)}
+.svc-tab .clight[data-state="testing"]{background:var(--warn);animation:pulse 1.1s infinite}
+.svc-add{width:32px;height:32px;border-radius:7px;border:1px dashed var(--line-2);background:transparent;color:var(--muted);display:grid;place-items:center;margin:0 4px 3px}
+.svc-add:hover{border-color:var(--accent);color:var(--accent)}
+.svc-extra{display:flex;gap:6px;flex-wrap:wrap;padding:9px 4px 0;font-size:11.5px;color:var(--faint);align-items:center}
+.svc-extra .chip{padding:2px 9px;border:1px solid var(--line);border-radius:20px;background:var(--panel-2)}
+
+/* ---------- config ---------- */
+.config{margin-top:12px}
+.field{display:grid;grid-template-columns:126px minmax(0,1fr);gap:5px 14px;align-items:center;padding:9px 0;border-top:1px solid var(--line)}
+.field:first-of-type{border-top:0}
+.field>label{font-size:12.5px;color:var(--muted)}
+.ctl{min-width:0}
+.ctl input[type=text],.ctl input[type=password],.ctl input[type=url],.ctl select,.ctl textarea{
+  width:100%;height:32px;padding:0 10px;border-radius:7px;border:1px solid var(--line-2);background:var(--panel);font-size:12.5px}
+.ctl textarea{height:64px;padding:7px 10px;resize:vertical;font-family:var(--mono);font-size:11.5px;line-height:1.6}
+.ctl input:focus,.ctl select:focus,.ctl textarea:focus{border-color:var(--accent)}
+.fhint{font-size:11.5px;color:var(--faint);margin:5px 0 0}
+.inline{display:flex;gap:8px;align-items:center}
+.inline input{flex:1;min-width:0}
+.clight{width:9px;height:9px;border-radius:50%;flex:none;background:var(--faint)}
+.clight[data-state="success"]{background:var(--ok);box-shadow:0 0 0 3px var(--ok-soft)}
+.clight[data-state="failure"]{background:var(--err);box-shadow:0 0 0 3px var(--err-soft)}
+.clight[data-state="testing"]{background:var(--warn);animation:pulse 1.1s infinite}
+.pw{position:relative}
+.pw input{padding-right:60px}
+.pw .pw-btn{position:absolute;right:4px;top:50%;transform:translateY(-50%);height:24px;padding:0 8px;font-size:11px;border:0;background:transparent;color:var(--muted);border-radius:5px}
+.pw .pw-btn:hover{color:var(--accent);background:var(--panel-3)}
+.switch{appearance:none;width:38px;height:21px;border-radius:20px;background:var(--line-2);position:relative;border:0;transition:background-color .15s;flex:none}
+.switch::after{content:"";position:absolute;width:15px;height:15px;top:3px;left:3px;border-radius:50%;background:var(--panel);transition:transform .15s}
+.switch:checked{background:var(--accent)}
+.switch:checked::after{transform:translateX(17px)}
+.adv{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+.adv>summary{cursor:pointer;font-size:12.5px;color:var(--muted);list-style:none;display:flex;align-items:center;gap:7px}
+.adv>summary::-webkit-details-marker{display:none}
+.adv>summary::after{content:"";width:6px;height:6px;border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;transform:rotate(-45deg);margin-left:auto;transition:transform .15s}
+.adv[open]>summary::after{transform:rotate(45deg)}
+.adv-body{padding-top:6px}
+
+/* ---------- progress screen ---------- */
+.hero{border:1px solid var(--line-2);background:var(--panel-2);border-radius:var(--r);padding:16px 17px}
+.hero-top{display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap}
+.steps{display:flex;gap:0;list-style:none;padding:0;margin:0 0 16px;font-size:11.5px;color:var(--faint)}
+.steps li{display:flex;align-items:center;gap:7px;padding-right:24px;position:relative}
+.steps li::after{content:"";position:absolute;left:calc(100% - 20px);top:50%;width:16px;height:1px;background:var(--line-2)}
+.steps li:last-child::after{display:none}
+.steps li .n{width:17px;height:17px;border-radius:50%;border:1px solid var(--line-2);display:grid;place-items:center;font-size:10px;font-family:var(--mono)}
+.steps li.done{color:var(--ok)}
+.steps li.done .n{border-color:var(--ok);background:var(--ok-soft);color:var(--ok)}
+.steps li.cur{color:var(--accent);font-weight:600}
+.steps li.cur .n{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);animation:pulse 1.3s infinite}
+.big-pct{font-size:40px;font-weight:650;letter-spacing:-1.5px;font-variant-numeric:tabular-nums;font-family:var(--mono);line-height:1}
+.big-pct small{font-size:16px;color:var(--muted);margin-left:2px}
+.big-bar{height:8px;border-radius:20px;background:var(--panel-3);margin:13px 0 8px;overflow:hidden}
+.big-bar i{display:block;height:100%;border-radius:20px;background:linear-gradient(90deg,var(--accent),var(--info));transition:width .35s ease}
+.hero-meta{font-size:11.5px;color:var(--faint);font-variant-numeric:tabular-nums}
+.hero-stat{margin-left:auto;display:grid;grid-template-columns:auto auto;gap:7px 18px;font-size:11.5px}
+.hero-stat .k{color:var(--faint)}
+.hero-stat .v{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono)}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:11px}
+.kv{display:flex;flex-direction:column;gap:9px;font-size:12px}
+.kv .row{display:flex;align-items:center;gap:9px}
+.kv .row .k{color:var(--faint);width:66px;flex:none;font-size:11.5px}
+.kv .row .v{font-variant-numeric:tabular-nums;font-family:var(--mono);min-width:0;overflow-wrap:anywhere}
+.kv .row .v.strong{color:var(--accent);font-weight:600}
+.speed-cards{display:flex;gap:10px;margin-top:12px}
+.speed-cards .sc{flex:1;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:9px 11px}
+.speed-cards .sc .k{font-size:11px;color:var(--faint);display:flex;align-items:center;gap:6px}
+.speed-cards .sc .v{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;font-family:var(--mono);margin-top:3px}
+.speed-cards .sc.up .v{color:var(--accent)}
+.speed-cards .sc.down .v{color:var(--info)}
+.log-body{height:196px;overflow:auto;font-family:var(--mono);font-size:11px;line-height:1.75;scrollbar-width:thin}
+.log-body div{display:flex;gap:9px;white-space:nowrap}
+.log-body .ts{color:var(--faint);flex:none}
+.log-body .msg{color:var(--muted);overflow-wrap:anywhere;white-space:normal}
+.log-body .msg.up{color:var(--text)}
+.log-body .msg.done{color:var(--ok)}
+.log-body .msg.warn{color:var(--warn)}
+.live{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--accent)}
+.live i{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse 1.1s infinite}
+.controls{display:flex;gap:8px;margin-top:12px;align-items:center}
+.controls .hint{margin-left:auto;font-size:11.5px;color:var(--faint)}
+.empty{padding:26px 8px;text-align:center;color:var(--muted);font-size:12.5px}
+.empty .btn{margin-top:12px}
+
+/* ---------- records table ---------- */
+.chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chip-btn{height:28px;padding:0 12px;border-radius:20px;border:1px solid var(--line-2);background:var(--panel-2);font-size:12px;color:var(--muted)}
+.chip-btn:hover{color:var(--text);border-color:var(--accent)}
+.chip-btn[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+.chip-btn .c{opacity:.65;font-variant-numeric:tabular-nums;margin-left:5px;font-family:var(--mono)}
+.tbl-wrap{margin-top:12px;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--panel-2)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{position:sticky;top:0;background:var(--panel-3);text-align:left;font-size:11px;font-weight:600;color:var(--muted);padding:9px 12px;border-bottom:1px solid var(--line-2);letter-spacing:.3px;white-space:nowrap;z-index:1}
+tbody td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover{background:var(--panel-3)}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono)}
+td .trig{display:block;font-size:10.5px;color:var(--faint);margin-top:1px}
+.dir{display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
+.dir.up svg{color:var(--accent)}.dir.down svg{color:var(--info)}.dir.both svg{color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:20px;font-size:11px;font-weight:500;border:1px solid transparent}
+.pill.ok{color:var(--ok);background:var(--ok-soft);border-color:var(--ok-soft)}
+.pill.warn{color:var(--warn);background:var(--warn-soft);border-color:var(--warn-soft)}
+.pill.err{color:var(--err);background:var(--err-soft);border-color:var(--err-soft)}
+.pill.mute{color:var(--muted);background:var(--panel-3);border-color:var(--line-2)}
+.tbl-foot{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:11.5px;color:var(--faint)}
+.tbl-foot .btn{margin-left:auto;height:28px;font-size:12px}
+
+/* ---------- bottom dock ---------- */
+.dock{flex:none;border-top:1px solid var(--line-2);background:var(--panel-2);position:relative}
+.dock::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.85}
+.dock[data-active="false"]::before{display:none}
+.dock-row{display:flex;align-items:center;gap:14px;padding:9px 16px 8px}
+.dock-status{display:flex;align-items:center;gap:10px;min-width:0}
+.dock-phase{font-size:11px;font-weight:600;color:var(--accent);border:1px solid var(--accent);background:var(--accent-soft);border-radius:20px;padding:2px 10px;flex:none}
+.dock[data-paused="true"] .dock-phase{color:var(--warn);border-color:var(--warn);background:var(--warn-soft)}
+.dock-file{font-size:11.5px;color:var(--muted);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.dock-metrics{margin-left:auto;display:flex;align-items:center;gap:16px;font-size:11.5px;font-variant-numeric:tabular-nums;font-family:var(--mono);color:var(--muted);flex:none}
+.dock-metrics .m{display:flex;align-items:center;gap:5px}
+.dock-metrics .m.up{color:var(--accent)}.dock-metrics .m.down{color:var(--info)}
+.dock-metrics .m.pct{color:var(--text);font-weight:600;font-size:13px}
+.dock-actions{display:flex;gap:5px;flex:none}
+.icb{width:28px;height:28px;border-radius:7px;border:1px solid var(--line-2);background:var(--panel);display:grid;place-items:center;color:var(--muted)}
+.icb:hover{border-color:var(--accent);color:var(--accent)}
+.icb.danger:hover{border-color:var(--err);color:var(--err)}
+.icb .chev{transition:transform .18s}
+.dock[data-expanded="true"] .icb .chev{transform:rotate(180deg)}
+.dock-bar{height:3px;background:var(--panel-3);margin:0}
+.dock-bar i{display:block;height:100%;background:var(--accent);transition:width .35s ease}
+.dock-expand{border-top:1px solid var(--line);padding:13px 16px 15px;display:grid;grid-template-columns:1fr auto;gap:14px 22px}
+.dock-steps{gap:0;margin:0}
+.dock-expand .col{min-width:0}
+.dock-expand .k{font-size:11px;color:var(--faint);margin-bottom:4px}
+.dock-expand .v{font-size:12px;font-family:var(--mono);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+
+/* ---------- notes panel ---------- */
+.notes{position:fixed;right:18px;bottom:18px;width:352px;max-width:calc(100vw - 36px);border:1px solid var(--line-2);background:var(--panel);border-radius:12px;box-shadow:var(--shadow);z-index:60;overflow:hidden}
+.notes>button.nh{width:100%;display:flex;align-items:center;gap:9px;padding:11px 13px;border:0;background:var(--panel-2);font-size:12.5px;font-weight:600;color:var(--text)}
+.notes>button.nh svg{color:var(--accent)}
+.notes>button.nh .chev{margin-left:auto;transition:transform .18s;color:var(--muted)}
+.notes[data-open="false"] .chev{transform:rotate(180deg)}
+.notes[data-open="false"] .nb{display:none}
+.nb{padding:6px 14px 13px;max-height:44vh;overflow:auto}
+.nb ul{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:9px}
+.nb li{position:relative;padding-left:17px;font-size:12px;line-height:1.6;color:var(--muted)}
+.nb li::before{content:"";position:absolute;left:4px;top:8px;width:5px;height:5px;border-radius:50%;background:var(--accent)}
+.nb li b{color:var(--text);font-weight:600}
+.nb .tag{display:inline-block;margin-top:10px;font-size:10.5px;color:var(--faint);font-family:var(--mono)}
+
+@media (max-width:880px){
+  .window{height:auto;max-height:none;margin:0 12px 20px}
+  .app{grid-template-columns:1fr}
+  .obsidian-nav{display:none}
+  .tile.span3,.tile.span2{grid-column:span 6}
+  .grid-2{grid-template-columns:1fr}
+  .field{grid-template-columns:1fr}
+  .hero-stat{margin-left:0}
+  .notes{position:static;width:auto;margin:0 12px 20px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="brand"><b>方案3 · 仪表盘监控</b><span>设计原型 · 演示数据 · 不连接网盘</span></div>
+  <div class="tb-group">
+    <label for="modeSelect">模拟状态</label>
+    <select id="modeSelect">
+      <option value="idle">空闲 · 已连接</option>
+      <option value="syncing">同步中</option>
+      <option value="conflict">有冲突</option>
+      <option value="error">连接失败</option>
+    </select>
+  </div>
+  <div class="tb-group">
+    <button id="themeBtn" type="button" aria-pressed="true">
+      <span class="only-dark"><svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.5 1.5M17.6 17.6l1.5 1.5M2 12h2M20 12h2M4.9 19.1l1.5-1.5M17.6 6.4l1.5-1.5"/></svg></span>
+      <span class="only-light"><svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.6 6.6 0 0 0 10.5 10.5Z"/></svg></span>
+      <span id="themeLabel">深色</span>
+    </button>
+  </div>
+</div>
+
+<div class="window">
+  <div class="titlebar">
+    <div class="lights"><i></i><i></i><i></i></div>
+    <div class="ttl"><b>我的笔记库</b><span>— Obsidian</span></div>
+    <div class="path">.obsidian/plugins/remotely-save-next</div>
+  </div>
+
+  <div class="app">
+    <aside class="obsidian-nav" aria-hidden="true">
+      <h3>设置</h3>
+      <p>编辑器</p><p>文件与链接</p><p>外观</p><p>热键</p><p>关于</p>
+      <div class="gap"></div>
+      <h3>插件选项</h3>
+      <p>社区插件</p>
+      <p class="active">remotely-save-next</p>
+    </aside>
+
+    <main class="pane">
+      <div class="pane-inner">
+        <header class="pane-head">
+          <h1>remotely-save-next</h1>
+          <span class="status-pill" id="statusPill" data-tone="ok"><i class="dot"></i><span id="statusText">空闲 · 已连接</span></span>
+          <div class="ph-actions">
+            <button class="btn ghost" id="quickTest" type="button">
+              <svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4.5 13H11l-1 9 8.5-11H12l1-9Z"/></svg>
+              测试连接
+            </button>
+            <button class="btn primary" id="syncNow" type="button">
+              <svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg>
+              <span id="syncNowLabel">立即同步</span>
+            </button>
+          </div>
+        </header>
+
+        <div class="banner" id="banner" hidden></div>
+
+        <nav class="primary-nav" id="primaryNav" role="tablist" aria-label="插件页面">
+          <button role="tab" data-screen="home" aria-selected="true">
+            <svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+            设置主页
+          </button>
+          <button role="tab" data-screen="progress" aria-selected="false">
+            <svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>
+            同步进度
+          </button>
+          <button role="tab" data-screen="records" aria-selected="false">
+            <svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>
+            同步记录
+          </button>
+        </nav>
+
+        <!-- ============ SCREEN 1 · 设置主页 ============ -->
+        <section id="screen-home" role="tabpanel">
+          <div class="tiles">
+            <article class="tile span3" id="tileLast">
+              <div class="t-label">
+                <svg class="ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 2"/></svg>
+                上次同步时间
+              </div>
+              <div class="t-value" id="tLastValue">16:42<small>今天</small></div>
+              <div class="t-sub" id="tLastSub">手动同步 · 上传 12 / 下载 3 · 耗时 6.2 秒</div>
+            </article>
+
+            <article class="tile live span3" id="tileRate">
+              <div class="t-label">
+                <svg class="ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4.5 13H11l-1 9 8.5-11H12l1-9Z"/></svg>
+                当前速率
+              </div>
+              <div class="t-split">
+                <div><span class="v" id="tRateUp">—</span><span class="k"><svg class="ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>上传</span></div>
+                <div><span class="v" id="tRateDown">—</span><span class="k"><svg class="ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>下载</span></div>
+              </div>
+              <div class="t-sub" id="tRateSub">同步未运行</div>
+            </article>
+
+            <article class="tile span2" id="tilePending">
+              <div class="t-label">
+                <svg class="ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 20h16"/></svg>
+                待处理
+              </div>
+              <div class="t-split">
+                <div><span class="v" id="tPendUp">12</span><span class="k">待上传</span></div>
+                <div><span class="v" id="tPendDown">3</span><span class="k">待下载</span></div>
+              </div>
+              <div class="t-sub" id="tPendSub">另有 2 项删除、4 个新文件夹</div>
+            </article>
+
+            <article class="tile span2" id="tileWeek">
+              <div class="t-label">
+                <svg class="ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7c4-3 8 3 12 0s6-1 6-1"/><path d="M3 17c4-3 8 3 12 0s6-1 6-1"/></svg>
+                本周传输量
+              </div>
+              <div class="t-value" id="tWeekValue">128.4<small>MB</small></div>
+              <div class="t-sub" id="tWeekSub">42 个文件 · 较上周 <em>+18%</em></div>
+            </article>
+
+            <article class="tile span2" id="tileIssues">
+              <div class="t-label">
+                <svg class="ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>
+                冲突 / 失败
+              </div>
+              <div class="t-split">
+                <div><span class="v" id="tConflict">2</span><span class="k">冲突</span></div>
+                <div><span class="v" id="tFailed">1</span><span class="k">失败</span></div>
+              </div>
+              <div class="t-sub" id="tIssueSub">最近 7 天 · 点「同步记录」查看</div>
+            </article>
+          </div>
+
+          <section class="panel activity">
+            <header>
+              <h2>近期活动</h2>
+              <span class="p-sub">近 14 天传输量</span>
+              <span class="sp" id="sparkTotal">合计 128.4 MB</span>
+            </header>
+            <div class="spark" id="spark"></div>
+            <div class="spark-axis" id="sparkAxis"></div>
+          </section>
+
+          <div class="svc-bar" id="svcTabs" role="tablist" aria-label="同步服务"></div>
+          <div class="svc-extra" id="svcExtra" hidden>
+            <span>选择要同步的服务（可多开标签）：</span>
+            <span class="chip">阿里云盘</span>
+            <span class="chip">夸克网盘</span>
+            <span class="chip">WebDAV</span>
+            <span class="chip">百度网盘</span>
+            <span class="chip" style="opacity:.6">Dropbox（原配置）</span>
+            <span class="chip" style="opacity:.6">OneDrive（原配置）</span>
+            <span class="chip" style="opacity:.6">S3（原配置）</span>
+          </div>
+
+          <section class="panel config">
+            <header>
+              <h2>配置 · <span id="cfgTitle">百度网盘</span></h2>
+              <span class="sp" id="cfgState"></span>
+            </header>
+            <div id="cfgBody"></div>
+          </section>
+        </section>
+
+        <!-- ============ SCREEN 2 · 同步进度 ============ -->
+        <section id="screen-progress" role="tabpanel" hidden>
+          <div class="hero">
+            <ol class="steps" id="heroSteps">
+              <li data-step="0"><span class="n">1</span>扫描</li>
+              <li data-step="1"><span class="n">2</span>规划</li>
+              <li data-step="2"><span class="n">3</span>传输</li>
+              <li data-step="3"><span class="n">4</span>收尾</li>
+            </ol>
+            <div class="hero-top">
+              <div style="min-width:230px;flex:1">
+                <div class="big-pct" id="heroPct">62<small>%</small></div>
+                <div class="big-bar"><i id="heroBar" style="width:62%"></i></div>
+                <div class="hero-meta" id="heroMeta">已完成 31 / 50 项 · 预计剩余 18 秒</div>
+              </div>
+              <div class="hero-stat" id="heroStat">
+                <span class="k">批量</span><span class="v" id="hsPlan">上传 12 · 下载 3 · 删除 2 · 冲突 1</span>
+                <span class="k">进度</span><span class="v" id="hsBytes">24.6 MB / 128.4 MB</span>
+                <span class="k">已耗时</span><span class="v" id="hsElapsed">3.4 秒</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <section class="panel">
+              <header><h2>当前传输</h2><span class="sp" id="curPhase">传输中</span></header>
+              <div class="kv">
+                <div class="row"><span class="k">当前文件</span><span class="v" id="curFile">笔记/日记/2026-10-15.md</span></div>
+                <div class="row"><span class="k">方向</span><span class="v" id="curDir">上传</span></div>
+                <div class="row"><span class="k">文件大小</span><span class="v" id="curSize">4.2 KB</span></div>
+                <div class="row"><span class="k">失败</span><span class="v" id="curFailed">0</span></div>
+              </div>
+              <div class="speed-cards">
+                <div class="sc up"><div class="k">↑ 上传</div><div class="v" id="curUp">1.8 MB/s</div></div>
+                <div class="sc down"><div class="k">↓ 下载</div><div class="v" id="curDown">0.4 MB/s</div></div>
+              </div>
+            </section>
+            <section class="panel">
+              <header><h2>事件流</h2><span class="live" id="liveTag"><i></i>实时</span></header>
+              <div class="log-body" id="logBody"></div>
+            </section>
+          </div>
+
+          <div class="controls">
+            <button class="btn" id="pPause" type="button">
+              <svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5v14M15 5v14"/></svg>
+              <span id="pPauseLabel">暂停</span>
+            </button>
+            <button class="btn" id="pStop" type="button">
+              <svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
+              停止
+            </button>
+            <span class="hint" id="progressHint">底部 Dock 在同步期间常驻，切换页面不会中断。</span>
+          </div>
+        </section>
+
+        <!-- ============ SCREEN 3 · 同步记录 ============ -->
+        <section id="screen-records" role="tabpanel" hidden>
+          <div class="chips" id="chips" role="group" aria-label="筛选同步记录"></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:150px">时间</th>
+                  <th style="width:92px">方向</th>
+                  <th class="n" style="width:64px">文件数</th>
+                  <th class="n" style="width:86px">大小</th>
+                  <th class="n" style="width:74px">耗时</th>
+                  <th style="width:96px">结果</th>
+                </tr>
+              </thead>
+              <tbody id="recBody"></tbody>
+            </table>
+          </div>
+          <div class="tbl-foot">
+            <span>仅记录同步时间、统计和文件路径，不保存笔记内容；最近 100 次。</span>
+            <button class="btn ghost" id="recMore" type="button">加载更多记录</button>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- ============ persistent bottom dock ============ -->
+  <div class="dock" id="dock" data-active="true" data-expanded="true" data-paused="false" hidden>
+    <div class="dock-row">
+      <div class="dock-status">
+        <span class="dock-phase" id="dockPhase">传输中</span>
+        <span class="dock-file" id="dockFile">笔记/日记/2026-10-15.md</span>
+      </div>
+      <div class="dock-metrics">
+        <span class="m up">↑ <b id="dockUp">1.8 MB/s</b></span>
+        <span class="m down">↓ <b id="dockDown">0.4 MB/s</b></span>
+        <span class="m pct" id="dockCount">31/50</span>
+        <span class="m pct" id="dockPct">62%</span>
+      </div>
+      <div class="dock-actions">
+        <button class="icb" id="dockPause" type="button" title="暂停 / 继续">
+          <svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5v14M15 5v14"/></svg>
+        </button>
+        <button class="icb danger" id="dockStop" type="button" title="停止同步">
+          <svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
+        </button>
+        <button class="icb" id="dockToggle" type="button" title="展开 / 折叠" aria-expanded="true">
+          <svg class="ic chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="dock-bar"><i id="dockBar" style="width:62%"></i></div>
+    <div class="dock-expand" id="dockExpand">
+      <div class="col">
+        <ol class="steps dock-steps" id="dockSteps">
+          <li data-step="0"><span class="n">1</span>扫描</li>
+          <li data-step="1"><span class="n">2</span>规划</li>
+          <li data-step="2"><span class="n">3</span>传输</li>
+          <li data-step="3"><span class="n">4</span>收尾</li>
+        </ol>
+        <div class="k" style="margin-top:10px">当前文件</div>
+        <div class="v" id="dockCur">笔记/日记/2026-10-15.md</div>
+      </div>
+      <div class="col" style="text-align:right">
+        <div class="k">已耗时</div>
+        <div class="v" id="dockElapsed">3.4 秒</div>
+        <div class="k" style="margin-top:10px">剩余预计</div>
+        <div class="v" id="dockEta">约 18 秒</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 交互说明 ============ -->
+<aside class="notes" id="notes" data-open="false" aria-label="交互说明">
+  <button class="nh" id="notesToggle" type="button" aria-expanded="false">
+    <svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-5M12 8h.01"/></svg>
+    交互说明 · 与现有插件的差异
+    <svg class="ic chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>
+  </button>
+  <div class="nb">
+    <ul>
+      <li><b>首页即仪表盘：</b>打开设置先看到同步健康度（上次同步、待处理、速率、本周传输量、冲突失败），而不是整屏设置项。</li>
+      <li><b>服务切换用顶部标签栏：</b>每个已配置服务一个标签，末尾「+」新增；不再用单选按钮切换后整页重载。</li>
+      <li><b>配置收进标签页内：</b>字段仍在，但统一放在当前服务标签下的「配置」区，切换服务不离开页面，连接状态点随标签常驻。</li>
+      <li><b>进度改为底部 Dock：</b>折叠时显示迷你进度与速率，展开显示阶段、当前文件、暂停/停止；切换任何页面都不中断，导航不被进度条挡住。</li>
+      <li><b>记录改为可筛选表格：</b>时间/方向/文件数/大小/耗时/结果六列对齐，配「全部 / 成功 / 部分失败 / 冲突」筛选；替代逐条 <code>details</code> 展开。</li>
+      <li><b>状态一眼可见：</b>顶部「模拟状态」可切换空闲 / 同步中 / 有冲突 / 连接失败，脏状态直接高亮到仪表盘、标签和横幅，无需进入子页面。</li>
+      <li><b>深色优先、可切浅色：</b>深色适合长时间挂机监控，字号紧凑、数字等宽对齐，右上角一键切换完整浅色模式。</li>
+    </ul>
+    <span class="tag">原型演示 · 数据为模拟值，点击即可体验</span>
+  </div>
+</aside>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+  var root = document.documentElement;
+
+  /* ---------------- icons ---------------- */
+  function svg(paths, w){
+    w = w || 14;
+    return '<svg class="ic" width="'+w+'" height="'+w+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+paths+'</svg>';
+  }
+  var IC = {
+    up:'<path d="M12 19V5M5 12l7-7 7 7"/>',
+    down:'<path d="M12 5v14M19 12l-7 7-7-7"/>',
+    both:'<path d="M4 8h12l-3-3M20 16H8l3 3"/>'
+  };
+
+  /* ---------------- mock data ---------------- */
+  var FILES = [
+    {p:'笔记/日记/2026-10-15.md', d:'upload', s:'4.2 KB'},
+    {p:'工作/周报/2026-W42.md', d:'upload', s:'11.6 KB'},
+    {p:'附件/会议记录.pdf', d:'upload', s:'2.4 MB'},
+    {p:'笔记/读书/《设计心理学》.md', d:'upload', s:'7.9 KB'},
+    {p:'附件/图片/架构图.png', d:'download', s:'1.1 MB'},
+    {p:'工作/项目/需求评审.md', d:'upload', s:'6.3 KB'},
+    {p:'笔记/日记/2026-10-14.md', d:'upload', s:'3.8 KB'},
+    {p:'附件/演示/方案.pptx', d:'upload', s:'8.6 MB'},
+    {p:'工作/项目/接口文档.md', d:'download', s:'14.2 KB'},
+    {p:'阅读/摘录/摘录.md', d:'upload', s:'2.1 KB'},
+    {p:'模板/周报模板.md', d:'download', s:'1.4 KB'},
+    {p:'笔记/想法/灵感.md', d:'upload', s:'1.9 KB'}
+  ];
+  var RECORDS = [
+    {time:'10-15 16:42', trig:'手动同步', dir:'both', files:18, size:'24.6 MB', dur:'6.2 秒', res:'成功'},
+    {time:'10-15 16:35', trig:'保存时同步', dir:'up', files:3, size:'812 KB', dur:'1.4 秒', res:'成功'},
+    {time:'10-15 16:30', trig:'定时同步', dir:'both', files:0, size:'—', dur:'0.8 秒', res:'无变化'},
+    {time:'10-14 22:10', trig:'定时同步', dir:'both', files:7, size:'3.1 MB', dur:'2.0 秒', res:'冲突'},
+    {time:'10-14 21:58', trig:'手动同步', dir:'up', files:12, size:'45.2 MB', dur:'9.8 秒', res:'部分失败'},
+    {time:'10-14 09:12', trig:'启动时同步', dir:'both', files:0, size:'—', dur:'0.6 秒', res:'无变化'},
+    {time:'10-13 18:20', trig:'手动同步', dir:'both', files:42, size:'128.4 MB', dur:'21.5 秒', res:'成功'},
+    {time:'10-13 08:03', trig:'定时同步', dir:'down', files:5, size:'9.7 MB', dur:'3.4 秒', res:'成功'},
+    {time:'10-12 20:44', trig:'手动同步', dir:'up', files:26, size:'88.0 MB', dur:'17.2 秒', res:'部分失败'},
+    {time:'10-12 12:30', trig:'保存时同步', dir:'both', files:2, size:'460 KB', dur:'1.1 秒', res:'冲突'},
+    {time:'10-12 09:05', trig:'启动时同步', dir:'down', files:9, size:'16.3 MB', dur:'4.1 秒', res:'成功'},
+    {time:'10-11 19:40', trig:'手动同步', dir:'both', files:31, size:'54.7 MB', dur:'12.6 秒', res:'成功'}
+  ];
+  var SPARK = [12,4,8,0,3,22,9,0,5,14,7,3,26,18];
+  var SPARK_LABEL = ['10-02','','','05','','','08','','','11','','','','15'];
+  var TOTAL = 50, UP_TOTAL = 12, DOWN_TOTAL = 3;
+
+  /* ---------------- state ---------------- */
+  var S = {
+    theme:'dark', screen:'home', mode:'idle', service:'baidu',
+    dockExpanded:true, paused:false, finished:false,
+    t:0, completed:0, phase:0, fileIdx:0, current:FILES[0],
+    up:0, down:0, bytes:0, elapsed:0,
+    filter:'all', recLimit:9, recGrown:false, logCount:0
+  };
+  var timer = null;
+
+  var SERVICES = {
+    baidu:  {name:'百度网盘', state:'成功', tone:'ok',   dot:'success'},
+    webdav: {name:'WebDAV',  state:'成功', tone:'ok',   dot:'success'},
+    quark:  {name:'夸克网盘', state:'未登录', tone:'mute', dot:'idle'},
+    aliyun: {name:'阿里云盘', state:'登录失效', tone:'err', dot:'failure'}
+  };
+  var ORDER = ['baidu','webdav','quark','aliyun'];
+
+  /* ---------------- helpers ---------------- */
+  function fmtMB(v){ return (Math.round(v*10)/10).toFixed(1); }
+  function pct(){ return Math.min(100, Math.round(S.completed / TOTAL * 100)); }
+  function bytesOfDone(){ return S.bytes; }
+  function etaSec(){
+    var p = S.completed / TOTAL;
+    if (p <= 0.01) return null;
+    var elapsedS = Math.max(0.5, S.elapsed);
+    return Math.max(1, Math.round(elapsedS / p - elapsedS));
+  }
+  function nowStamp(){
+    var base = 16*3600 + 42*60 + Math.round(S.elapsed);
+    var h = Math.floor(base/3600)%24, m = Math.floor(base/60)%60, s = base%60;
+    return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+  }
+  function flash(el){
+    if(!el) return;
+    el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+  }
+
+  /* ---------------- theme ---------------- */
+  function applyTheme(){
+    root.setAttribute('data-theme', S.theme);
+    $('themeLabel').textContent = S.theme === 'dark' ? '深色' : '浅色';
+    $('themeBtn').setAttribute('aria-pressed', String(S.theme==='dark'));
+  }
+
+  /* ---------------- navigation ---------------- */
+  function showScreen(name){
+    S.screen = name;
+    ['home','progress','records'].forEach(function(k){
+      $('screen-'+k).hidden = k !== name;
+    });
+    Array.prototype.forEach.call($('primaryNav').children, function(b){
+      b.setAttribute('aria-selected', String(b.dataset.screen === name));
+    });
+    if(name === 'progress'){
+      if(S.mode === 'idle') setMode('syncing');
+      S.dockExpanded = true;
+    }
+    renderAll();
+  }
+
+  /* ---------------- mode ---------------- */
+  function setMode(mode){
+    S.mode = mode;
+    $('modeSelect').value = mode;
+    if(mode === 'syncing'){
+      resetSync(); startTimer();
+      S.dockExpanded = true;
+    } else {
+      stopTimer();
+      if(mode === 'conflict') S.filter = 'conflict';
+      if(mode === 'idle') S.filter = 'all';
+    }
+    renderAll();
+  }
+  function resetSync(){
+    S.t = 0; S.completed = 0; S.phase = 0; S.fileIdx = 0;
+    S.current = FILES[0]; S.up = 0; S.down = 0; S.bytes = 0;
+    S.elapsed = 0; S.paused = false; S.finished = false; S.logCount = 0;
+    $('logBody').innerHTML = '';
+    pushLog('扫描远端 · 已发现 1,284 个文件、86 个文件夹', '');
+  }
+  function startTimer(){
+    stopTimer();
+    timer = setInterval(tick, 620);
+  }
+  function stopTimer(){ if(timer){ clearInterval(timer); timer = null; } }
+
+  function tick(){
+    if(S.paused || S.finished) return;
+    S.t++; S.elapsed = Math.round(S.t * 0.62 * 10)/10;
+
+    if(S.t === 1){
+      S.phase = 0; S.up = 0; S.down = 0;
+    } else if(S.t <= 2){
+      S.phase = 0;
+      if(S.t === 2) pushLog('扫描本地 · 已发现 1,291 个文件、88 个文件夹', '');
+    } else if(S.t <= 3){
+      S.phase = 1;
+      pushLog('正在计算需要同步的文件…', '');
+    } else if(S.t === 4){
+      S.phase = 2;
+      pushLog('计划完成 · 待处理 50 项（上传 12 · 下载 3 · 删除 2 · 冲突 1）', 'warn');
+    } else {
+      S.phase = 2;
+      S.completed = Math.min(TOTAL, S.completed + 1 + Math.floor(Math.random()*3));
+      S.fileIdx = S.fileIdx % FILES.length;
+      S.current = FILES[S.fileIdx++];
+      var inc = (S.current.s.indexOf('MB') > -1) ? 1.6 : 0.02;
+      S.bytes = Math.round((S.bytes + inc) * 100) / 100;
+      S.up   = S.current.d === 'upload'   ? 1.2 + Math.random()*1.8 : 0.02 + Math.random()*0.15;
+      S.down = S.current.d === 'download' ? 0.3 + Math.random()*0.8 : 0.02 + Math.random()*0.15;
+      var arrow = S.current.d === 'upload' ? '↑' : '↓';
+      pushLog(arrow + ' ' + S.current.p + '  (' + S.current.s + ')', 'up');
+      if(S.completed >= TOTAL){
+        S.phase = 3;
+        S.up = 0; S.down = 0;
+        pushLog('同步完成 · 成功 '+TOTAL+' · 失败 0 · 冲突 1（保留较新文件）', 'done');
+        S.finished = true;
+        stopTimer();
+      }
+    }
+    renderAll();
+  }
+
+  function pushLog(msg, tone){
+    if(S.logCount > 40) return;
+    S.logCount++;
+    var body = $('logBody');
+    var line = document.createElement('div');
+    line.innerHTML = '<span class="ts">'+nowStamp()+'</span><span class="msg '+tone+'"></span>';
+    line.querySelector('.msg').textContent = msg;
+    body.appendChild(line);
+    body.scrollTop = body.scrollHeight;
+  }
+
+  /* ---------------- tiles + header ---------------- */
+  var MODE_TEXT = {
+    idle:    {text:'空闲 · 已连接', tone:'ok'},
+    syncing: {text:'正在同步 · 传输中', tone:'sync'},
+    conflict:{text:'有冲突 · 需处理 2 项', tone:'warn'},
+    error:   {text:'连接失败 · 请检查', tone:'err'}
+  };
+  function renderHeader(){
+    var m = MODE_TEXT[S.mode];
+    $('statusPill').dataset.tone = m.tone;
+    $('statusText').textContent = m.text;
+
+    var btn = $('syncNow'), label = $('syncNowLabel');
+    if(S.mode === 'syncing'){
+      btn.disabled = false;
+      label.textContent = S.paused ? '继续' : '暂停';
+      btn.classList.remove('primary');
+    } else if(S.mode === 'error'){
+      btn.disabled = true; label.textContent = '立即同步'; btn.classList.add('primary');
+    } else {
+      btn.disabled = false; label.textContent = '立即同步'; btn.classList.add('primary');
+    }
+
+    var b = $('banner');
+    if(S.mode === 'conflict'){
+      b.hidden = false; b.dataset.tone = 'warn';
+      b.innerHTML = svg('<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/>',15)
+        + '<span>检测到 <b>2 个冲突文件</b>（两端都有修改），已按「保留较新文件」处理，可另行保留双方副本。</span>'
+        + '<span class="b-act"><button class="btn" type="button" id="bannerAct">查看冲突记录</button></span>';
+      b.querySelector('#bannerAct').onclick = function(){ showScreen('records'); };
+    } else if(S.mode === 'error'){
+      b.hidden = false; b.dataset.tone = 'err';
+      b.innerHTML = svg('<circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/>',15)
+        + '<span>连接失败：账号或密码未通过认证，请检查登录信息后重新测试连接。 [401]</span>'
+        + '<span class="b-act"><button class="btn" type="button" id="bannerAct">重新测试连接</button></span>';
+      b.querySelector('#bannerAct').onclick = function(){ setMode('idle'); };
+    } else {
+      b.hidden = true;
+    }
+  }
+
+  function renderTiles(){
+    var p = S.completed / TOTAL;
+    var syncing = S.mode === 'syncing';
+    var paused = syncing && S.paused;
+
+    if(syncing){
+      $('tRateUp').textContent = S.up ? (Math.round(S.up*100)/100)+' MB/s' : '0 MB/s';
+      $('tRateDown').textContent = S.down ? (Math.round(S.down*100)/100)+' MB/s' : '0 MB/s';
+      $('tRateSub').textContent = paused ? '已暂停 · 等待当前请求完成' : ('第 '+(S.completed+1)+' / '+TOTAL+' 项 · '+(S.phase===0?'扫描':S.phase===1?'规划':S.phase===2?'传输':'收尾'));
+      $('tileRate').classList.toggle('live', !paused);
+    } else {
+      $('tRateUp').textContent = '—';
+      $('tRateDown').textContent = '—';
+      $('tRateSub').textContent = '同步未运行 · 上次实时速率 ↑ 1.9 / ↓ 0.6 MB/s';
+      $('tileRate').classList.remove('live');
+    }
+
+    var pu = syncing ? Math.max(0, Math.round(UP_TOTAL*(1-p))) : UP_TOTAL;
+    var pd = syncing ? Math.max(0, Math.round(DOWN_TOTAL*(1-p))) : DOWN_TOTAL;
+    $('tPendUp').textContent = pu;
+    $('tPendDown').textContent = pd;
+    $('tPendSub').textContent = syncing
+      ? '剩余 ' + (pu+pd) + ' 项文件 · 删除 2 · 新文件夹 4'
+      : '另有 2 项删除、4 个新文件夹';
+
+    var conflictOn = (S.mode === 'conflict');
+    $('tileIssues').classList.toggle('warn', conflictOn);
+    $('tConflict').textContent = conflictOn ? '2' : '2';
+    $('tFailed').textContent = '1';
+    $('tIssueSub').textContent = conflictOn ? '需立即处理 · 点「查看冲突记录」' : '最近 7 天 · 点「同步记录」查看';
+
+    if(syncing){
+      $('tLastSub').textContent = '正在执行新一次同步 · 源：手动同步';
+    } else {
+      $('tLastSub').textContent = '手动同步 · 上传 12 / 下载 3 · 耗时 6.2 秒';
+    }
+  }
+
+  /* ---------------- activity sparkline ---------------- */
+  function renderSpark(){
+    var max = Math.max.apply(null, SPARK);
+    var html = '', axis = '';
+    SPARK.forEach(function(v,i){
+      var h = Math.max(5, Math.round(v/max*100));
+      var today = i === SPARK.length-1;
+      html += '<div class="bar'+(today?' today':'')+'" style="height:'+h+'%" title="10-'+(i<9?'0':'')+ (i+2) +' · '+v+' MB"></div>';
+      axis += '<span>'+(SPARK_LABEL[i]||'')+'</span>';
+    });
+    $('spark').innerHTML = html;
+    $('sparkAxis').innerHTML = axis;
+    $('sparkTotal').textContent = '近 14 天 · 峰值 ' + max + ' MB';
+  }
+
+  /* ---------------- service tabs + config ---------------- */
+  function renderTabs(){
+    var html = '';
+    ORDER.forEach(function(k){
+      var s = SERVICES[k];
+      var dot = s.dot;
+      if(k === S.service){
+        if(S.mode === 'error') dot = 'failure';
+        else if(S.mode === 'conflict') dot = 'conflict';
+      }
+      html += '<button class="svc-tab" role="tab" data-svc="'+k+'" aria-selected="'+(k===S.service)+'">'
+            + '<span class="clight" data-state="'+dot+'"></span>'+s.name+'</button>';
+    });
+    html += '<button class="svc-add" id="svcAdd" type="button" aria-label="添加同步服务" title="添加同步服务">'
+          + svg('<path d="M12 5v14M5 12h14"/>',16)+'</button>';
+    var bar = $('svcTabs');
+    bar.innerHTML = html;
+    bar.querySelector('#svcAdd').onclick = function(){
+      var ex = $('svcExtra'); ex.hidden = !ex.hidden;
+    };
+    Array.prototype.forEach.call(bar.querySelectorAll('.svc-tab'), function(b){
+      b.onclick = function(){
+        S.service = b.dataset.svc;
+        renderTabs(); renderConfig();
+      };
+    });
+  }
+
+  function row(label, ctrl, hint){
+    return '<div class="field"><label>'+label+'</label><div class="ctl">'+ctrl+(hint?'<p class="fhint">'+hint+'</p>':'')+'</div></div>';
+  }
+  function toggle(checked){
+    return '<label class="switch"><input type="checkbox" '+(checked?'checked':'')+'><span></span></label>';
+  }
+  var COMMON =
+    row('保存时同步', toggle(true), '连续保存会合并为一次同步')
+    + row('定时同步', '<select><option>关闭</option><option>每 1 分钟</option><option selected>每 5 分钟</option><option>每 10 分钟</option><option>每 30 分钟</option></select>')
+    + row('冲突处理', '<select><option selected>保留较新文件（推荐）</option><option>保留双方副本</option></select>', '两端都有修改时的处理方式')
+    + '<details class="adv"><summary>高级设置</summary><div class="adv-body">'
+    + row('并行度', '<select><option>3</option><option selected>5</option><option>10</option></select>', '同时上传 / 下载的最大文件数，默认 5')
+    + row('同步方向', '<select><option selected>双向同步</option><option>增量推送（备份模式）</option><option>增量拉取</option><option>增量推送带删除</option><option>增量拉取带删除</option></select>')
+    + row('端到端加密', '<select><option selected>关闭</option><option>RClone Crypt（推荐）</option><option>OpenSSL enc</option></select>', '上传前在本地加密；修改后需清空远端重新同步')
+    + row('跳过大文件', '<select><option selected>不设置</option><option>大于 50 MB</option><option>大于 100 MB</option></select>')
+    + row('忽略路径', '<textarea placeholder="每行一条正则表达式">\\.trash$\n^node_modules/</textarea>', '相对笔记库根目录，无前置斜杠')
+    + row('删除文件到', '<select><option selected>系统回收站（默认）</option><option>Obsidian .trash 文件夹</option></select>')
+    + '</div></details>';
+
+  function cfgFor(k){
+    if(k === 'baidu'){
+      return row('登录状态', '<div class="inline"><input type="text" value="已登录 · 百度账号 138****6721" readonly><button class="btn" type="button">退出登录</button></div>')
+        + row('网盘文件夹', '<div class="inline"><input type="text" value="/apps/remotely-save-next/我的笔记库"><button class="btn" type="button" id="cfgTest">准备同步文件夹</button><span class="clight" data-state="success" title="连接成功"></span></div>', '建议每个笔记库使用一个单独的网盘文件夹；不存在时自动创建。')
+        + COMMON;
+    }
+    if(k === 'webdav'){
+      return row('服务器地址', '<div class="inline"><input type="url" value="https://dav.jianguoyun.com/dav/"><button class="btn" type="button" id="cfgTest">测试连接</button><span class="clight" data-state="success" title="连接成功"></span></div>')
+        + row('账号', '<input type="text" value="example@jianguoyun.com">')
+        + row('密码', '<div class="pw"><input type="password" value="example-password"><button class="pw-btn" type="button" id="pwBtn">显示</button></div>')
+        + row('同步目录', '<input type="text" value="/home/Drive">', '自动追加当前笔记本名称：我的笔记库')
+        + row('完整路径', '<input type="text" value="https://dav.jianguoyun.com/dav/我的笔记库/" readonly>')
+        + COMMON;
+    }
+    if(k === 'quark'){
+      return row('登录状态', '<div class="inline"><input type="text" value="未登录" readonly><button class="btn" type="button">扫码登录</button></div>', '手机夸克 App 扫码，确认后自动完成登录。')
+        + row('专用同步目录', '<input type="text" value="/我的笔记库">', '不存在时自动创建')
+        + COMMON;
+    }
+    return row('登录状态', '<div class="inline"><input type="text" value="登录已失效" readonly><button class="btn" type="button" id="cfgTest">重新扫码登录</button><span class="clight" data-state="failure" title="登录失效"></span></div>', '阿里云盘登录已失效，请重新扫码。')
+      + row('同步文件夹', '<input type="text" value="/我的笔记库">')
+      + COMMON;
+  }
+
+  function renderConfig(){
+    var s = SERVICES[S.service];
+    $('cfgTitle').textContent = s.name;
+    var st = $('cfgState');
+    st.textContent = '连接状态：' + s.state;
+    var body = $('cfgBody');
+    body.innerHTML = cfgFor(S.service);
+
+    var test = body.querySelector('#cfgTest');
+    if(test){
+      var light = body.querySelector('.clight');
+      test.onclick = function(){
+        if(!light) return;
+        light.dataset.state = 'testing';
+        test.disabled = true;
+        setTimeout(function(){
+          var failed = (S.mode === 'error') || S.service === 'aliyun';
+          light.dataset.state = failed ? 'failure' : 'success';
+          test.disabled = false;
+        }, 900);
+      };
+    }
+    var pw = body.querySelector('#pwBtn');
+    if(pw){
+      pw.onclick = function(){
+        var input = body.querySelector('.pw input');
+        var show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        pw.textContent = show ? '隐藏' : '显示';
+      };
+    }
+  }
+
+  /* ---------------- progress screen ---------------- */
+  function renderSteps(el, active, done){
+    Array.prototype.forEach.call(el.children, function(li, i){
+      li.classList.toggle('done', i < active || (done && i <= active));
+      li.classList.toggle('cur', i === active && !done);
+    });
+  }
+  function renderProgress(){
+    var syncing = S.mode === 'syncing';
+    var p = syncing ? S.completed/TOTAL : (S.mode==='error' ? 0 : 1);
+    var pc = Math.round(p*100);
+    var phase = syncing ? S.phase : 3;
+
+    renderSteps($('heroSteps'), phase, !syncing && S.mode!=='error');
+    $('heroPct').innerHTML = pc + '<small>%</small>';
+    $('heroBar').style.width = pc + '%';
+
+    var done = syncing ? S.completed : TOTAL;
+    if(syncing){
+      var e = etaSec();
+      $('heroMeta').textContent = S.paused
+        ? '已暂停 · 已完成 ' + S.completed + ' / ' + TOTAL + ' 项（点击继续）'
+        : '已完成 ' + S.completed + ' / ' + TOTAL + ' 项' + (e!==null ? ' · 预计剩余 ' + e + ' 秒' : '');
+    } else if(S.mode === 'error'){
+      $('heroMeta').textContent = '连接失败 · 本次未开始扫描';
+    } else if(S.mode === 'conflict'){
+      $('heroMeta').textContent = '上次同步 16:42 已完成 · 存在 2 个冲突待处理';
+    } else {
+      $('heroMeta').textContent = '上次同步 今天 16:42 · 耗时 6.2 秒';
+    }
+
+    $('hsPlan').textContent = '上传 12 · 下载 3 · 删除 2 · 冲突 ' + (syncing && S.completed < TOTAL ? 1 : 1);
+    $('hsBytes').textContent = syncing
+      ? fmtMB(S.bytes) + ' MB / 128.4 MB'
+      : '128.4 MB / 128.4 MB';
+    $('hsElapsed').textContent = syncing ? S.elapsed.toFixed(1)+' 秒' : '6.2 秒';
+
+    $('curPhase').textContent = syncing ? ['扫描中','规划中','传输中','收尾中'][S.phase] : (S.mode==='error' ? '未运行' : '已完成');
+    if(syncing){
+      $('curFile').textContent = S.current.p;
+      $('curDir').textContent = S.current.d === 'upload' ? '上传' : '下载';
+      $('curSize').textContent = S.current.s;
+      $('curUp').textContent = (Math.round(S.up*100)/100) + ' MB/s';
+      $('curDown').textContent = (Math.round(S.down*100)/100) + ' MB/s';
+    } else {
+      $('curFile').textContent = '—';
+      $('curDir').textContent = '—';
+      $('curSize').textContent = '—';
+      $('curUp').textContent = '0 MB/s';
+      $('curDown').textContent = '0 MB/s';
+    }
+
+    $('pPause').disabled = !syncing;
+    $('pStop').disabled = !syncing;
+    $('pPauseLabel').textContent = S.paused ? '继续' : '暂停';
+    $('liveTag').style.visibility = syncing ? 'visible' : 'hidden';
+  }
+
+  /* ---------------- dock ---------------- */
+  function renderDock(){
+    var syncing = S.mode === 'syncing';
+    var dock = $('dock');
+    dock.hidden = !syncing;
+    if(!syncing) return;
+
+    var pc = pct();
+    dock.dataset.active = String(!S.paused);
+    dock.dataset.paused = String(S.paused);
+    dock.dataset.expanded = String(S.dockExpanded);
+
+    $('dockPhase').textContent = S.paused ? '已暂停' : ['扫描中','规划中','传输中','收尾中'][S.phase];
+    var name = S.finished ? '同步完成 · 成功 50 · 冲突 1' : S.current.p;
+    $('dockFile').textContent = name;
+    $('dockUp').textContent = (Math.round(S.up*100)/100) + ' MB/s';
+    $('dockDown').textContent = (Math.round(S.down*100)/100) + ' MB/s';
+    $('dockCount').textContent = S.completed + '/' + TOTAL;
+    $('dockPct').textContent = pc + '%';
+    $('dockBar').style.width = pc + '%';
+    $('dockCur').textContent = name;
+    $('dockElapsed').textContent = S.elapsed.toFixed(1) + ' 秒';
+    var e = etaSec();
+    $('dockEta').textContent = S.finished ? '已完成' : (e!==null ? '约 '+e+' 秒' : '计算中');
+    renderSteps($('dockSteps'), S.phase, S.finished || S.phase === 3);
+
+    $('dockExpand').hidden = !S.dockExpanded;
+    $('dockToggle').setAttribute('aria-expanded', String(S.dockExpanded));
+  }
+
+  /* ---------------- records ---------------- */
+  var DIR = {
+    up:   {label:'上传', cls:'up', ic:IC.up},
+    down: {label:'下载', cls:'down', ic:IC.down},
+    both: {label:'双向', cls:'both', ic:IC.both}
+  };
+  var RES_PILL = {
+    '成功':'ok', '部分失败':'warn', '冲突':'err', '无变化':'mute'
+  };
+  function filtered(){
+    if(S.filter === 'all') return RECORDS;
+    if(S.filter === 'success') return RECORDS.filter(function(r){ return r.res === '成功'; });
+    if(S.filter === 'partial') return RECORDS.filter(function(r){ return r.res === '部分失败'; });
+    return RECORDS.filter(function(r){ return r.res === '冲突'; });
+  }
+  function renderChips(){
+    var defs = [
+      ['all','全部'], ['success','成功'], ['partial','部分失败'], ['conflict','冲突']
+    ];
+    var html = '';
+    defs.forEach(function(d){
+      var count = d[0]==='all' ? RECORDS.length
+        : RECORDS.filter(function(r){
+            return (d[0]==='success' && r.res==='成功') || (d[0]==='partial' && r.res==='部分失败') || (d[0]==='conflict' && r.res==='冲突');
+          }).length;
+      html += '<button class="chip-btn" type="button" data-f="'+d[0]+'" aria-pressed="'+(S.filter===d[0])+'">'+d[1]+'<span class="c">'+count+'</span></button>';
+    });
+    var box = $('chips');
+    box.innerHTML = html;
+    Array.prototype.forEach.call(box.children, function(b){
+      b.onclick = function(){ S.filter = b.dataset.f; renderChips(); renderRecords(); };
+    });
+  }
+  function renderRecords(){
+    var rows = filtered();
+    var shown = rows.slice(0, S.recLimit);
+    var body = $('recBody');
+    if(!shown.length){
+      body.innerHTML = '<tr><td colspan="6"><div class="empty">没有符合筛选条件的记录</div></td></tr>';
+    } else {
+      body.innerHTML = shown.map(function(r){
+        var d = DIR[r.dir];
+        return '<tr>'
+          + '<td><span class="num">'+r.time+'</span><span class="trig">'+r.trig+'</span></td>'
+          + '<td><span class="dir '+d.cls+'">'+svg(d.ic,13)+d.label+'</span></td>'
+          + '<td class="n">'+(r.files||'—')+'</td>'
+          + '<td class="n">'+r.size+'</td>'
+          + '<td class="n">'+r.dur+'</td>'
+          + '<td><span class="pill '+(RES_PILL[r.res]||'mute')+'">'+r.res+'</span></td>'
+          + '</tr>';
+      }).join('');
+    }
+    var more = $('recMore');
+    more.hidden = shown.length >= rows.length;
+  }
+
+  /* ---------------- master render ---------------- */
+  function renderAll(){
+    renderHeader();
+    renderTiles();
+    renderTabs();
+    renderConfig();
+    renderProgress();
+    renderDock();
+    renderChips();
+    renderRecords();
+  }
+
+  /* ---------------- events ---------------- */
+  $('themeBtn').onclick = function(){
+    S.theme = S.theme === 'dark' ? 'light' : 'dark';
+    applyTheme();
+  };
+  $('modeSelect').onchange = function(){ setMode(this.value); };
+  Array.prototype.forEach.call($('primaryNav').children, function(b){
+    b.onclick = function(){ showScreen(b.dataset.screen); };
+  });
+  $('syncNow').onclick = function(){
+    if(S.mode === 'syncing'){ S.paused = !S.paused; renderAll(); return; }
+    if(S.mode === 'error') return;
+    setMode('syncing');
+    if(S.screen !== 'progress') { /* 导航不阻塞 Dock */ }
+  };
+  $('quickTest').onclick = function(){
+    if(S.mode === 'error'){ setMode('idle'); return; }
+    var pill = $('statusPill');
+    var old = $('statusText').textContent;
+    $('statusText').textContent = '正在测试连接…';
+    setTimeout(function(){
+      if(S.mode === 'error') $('statusText').textContent = '连接失败 · 请检查';
+      else $('statusText').textContent = old;
+    }, 900);
+    pill.dataset.tone = S.mode === 'error' ? 'err' : 'ok';
+  };
+  $('pPause').onclick = function(){ S.paused = !S.paused; renderAll(); };
+  $('dockPause').onclick = function(){ S.paused = !S.paused; renderAll(); };
+  function stopSync(){
+    stopTimer();
+    S.finished = true; S.paused = false; S.phase = 3;
+    pushLog('同步已停止 · 已完成的文件保留', 'warn');
+    S.mode = 'idle';
+    $('modeSelect').value = 'idle';
+    renderAll();
+  }
+  $('pStop').onclick = stopSync;
+  $('dockStop').onclick = stopSync;
+  $('dockToggle').onclick = function(){
+    S.dockExpanded = !S.dockExpanded;
+    renderDock();
+  };
+  $('recMore').onclick = function(){
+    if(S.recGrown) return;
+    RECORDS.push(
+      {time:'10-11 14:22', trig:'定时同步', dir:'down', files:4, size:'6.8 MB', dur:'2.6 秒', res:'成功'},
+      {time:'10-11 08:31', trig:'启动时同步', dir:'both', files:1, size:'220 KB', dur:'0.9 秒', res:'冲突'},
+      {time:'10-10 21:05', trig:'手动同步', dir:'up', files:19, size:'63.1 MB', dur:'14.3 秒', res:'成功'},
+      {time:'10-10 12:48', trig:'保存时同步', dir:'up', files:2, size:'540 KB', dur:'1.2 秒', res:'成功'}
+    );
+    S.recGrown = true; S.recLimit += 6;
+    renderChips(); renderRecords();
+  };
+  $('notesToggle').onclick = function(){
+    var n = $('notes');
+    var open = n.dataset.open === 'true';
+    n.dataset.open = String(!open);
+    this.setAttribute('aria-expanded', String(!open));
+  };
+
+  /* ---------------- init ---------------- */
+  applyTheme();
+  renderSpark();
+  S.dockExpanded = true;
+  renderAll();
+
+  // 打开即演示一次空闲态；按下「同步进度」会自动开始一次模拟同步。
+  $('dock').hidden = true;
+})();
+</script>
+</body>
+</html>

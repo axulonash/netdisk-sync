@@ -1,0 +1,1050 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>方案1 · 工作台导航 — remotely-save-next 界面提案</title>
+<style>
+:root{
+  color-scheme:light;
+  --bg:#ffffff;
+  --bg-app:#eceef0;
+  --bg-rail:#f4f5f7;
+  --bg-sunken:#f6f7f8;
+  --bg-input:#ffffff;
+  --bg-hover:#eceef1;
+  --text:#1f2328;
+  --text-muted:#5c626b;
+  --text-faint:#8d939c;
+  --line:#e2e5e8;
+  --line-soft:#eceef0;
+  --accent:#0d8a7c;
+  --accent-hi:#0a7267;
+  --accent-soft:rgba(13,138,124,.10);
+  --accent-on:#ffffff;
+  --ok:#1f7a52;
+  --ok-soft:rgba(31,122,82,.10);
+  --err:#b3352c;
+  --err-soft:rgba(179,53,44,.09);
+  --warn:#8a6212;
+  --warn-soft:rgba(138,98,18,.10);
+  --shadow:0 1px 2px rgba(16,20,24,.06),0 8px 24px -12px rgba(16,20,24,.18);
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Noto Sans Mono CJK SC","Liberation Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+}
+[data-theme=dark]{
+  color-scheme:dark;
+  --bg:#1e1f21;
+  --bg-app:#131415;
+  --bg-rail:#18191b;
+  --bg-sunken:#242628;
+  --bg-input:#17181a;
+  --bg-hover:#2a2c2f;
+  --text:#d7d9dc;
+  --text-muted:#9aa0a6;
+  --text-faint:#71767d;
+  --line:#313438;
+  --line-soft:#282a2e;
+  --accent:#2fbfae;
+  --accent-hi:#46d3c1;
+  --accent-soft:rgba(47,191,174,.14);
+  --accent-on:#062622;
+  --ok:#4fbf8b;
+  --ok-soft:rgba(79,191,139,.13);
+  --err:#e5796d;
+  --err-soft:rgba(229,121,109,.13);
+  --warn:#dcb45f;
+  --warn-soft:rgba(220,180,95,.14);
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px -14px rgba(0,0,0,.7);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg-app);color:var(--text);
+  font:13px/1.55 var(--sans);
+  -webkit-font-smoothing:antialiased;
+  padding:20px 16px 56px;
+}
+button,input,select{font:inherit;color:inherit}
+button,select,summary{cursor:pointer}
+button{border:1px solid var(--line);background:var(--bg);border-radius:5px;padding:0 11px;height:30px;min-width:0;
+  display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+  transition:background-color .12s,border-color .12s,color .12s}
+button:hover:not(:disabled){background:var(--bg-hover)}
+button:disabled{opacity:.45;cursor:default}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-on);font-weight:600}
+button.primary:hover:not(:disabled){background:var(--accent-hi);border-color:var(--accent-hi)}
+button.primary:disabled{background:var(--bg-sunken);border-color:var(--line);color:var(--text-faint);opacity:1}
+button.ghost{background:transparent;border-color:transparent;color:var(--text-muted)}
+button.ghost:hover:not(:disabled){background:var(--bg-hover);color:var(--text)}
+button.danger{color:var(--err);border-color:var(--line)}
+button.danger:hover:not(:disabled){background:var(--err-soft);border-color:var(--err)}
+button.icon{width:30px;padding:0;justify-content:center}
+button.block{width:100%;justify-content:center}
+input:not([type=checkbox]):not([type=radio]),select{
+  height:30px;padding:0 9px;background:var(--bg-input);border:1px solid var(--line);border-radius:5px;width:100%;min-width:0
+}
+input:focus-visible,select:focus-visible,button:focus-visible,summary:focus-visible{
+  outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)
+}
+summary:focus-visible{box-shadow:0 0 0 3px var(--accent-soft);border-radius:4px}
+svg{flex:none}
+.ic{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.ic-sm{width:13px;height:13px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:12px}
+.muted{color:var(--text-muted)}
+.faint{color:var(--text-faint)}
+[hidden]{display:none!important}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- demo toolbar ---------- */
+.demo{max-width:1050px;margin:0 auto 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  color:var(--text-muted);font-size:12px}
+.demo .tag{border:1px solid var(--line);border-radius:4px;padding:2px 7px;background:var(--bg);color:var(--text);font-weight:600;letter-spacing:.02em}
+.demo label{color:var(--text-muted)}
+.demo select{width:auto;height:28px}
+.demo .grow{flex:1}
+.demo .seg{display:flex;border:1px solid var(--line);border-radius:5px;overflow:hidden;background:var(--bg)}
+.demo .seg button{border:0;border-radius:0;height:26px;font-size:12px}
+.demo .seg button+button{border-left:1px solid var(--line)}
+.demo .seg button[aria-pressed=true]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+
+/* ---------- window ---------- */
+.win{max-width:1050px;margin:0 auto;background:var(--bg);border:1px solid var(--line);border-radius:8px;
+  overflow:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column;min-height:660px}
+.titlebar{display:flex;align-items:center;gap:10px;height:34px;padding:0 12px;background:var(--bg-rail);
+  border-bottom:1px solid var(--line);font-size:12px;color:var(--text-muted)}
+.dots{display:flex;gap:6px}
+.dots i{width:11px;height:11px;border-radius:50%;display:block}
+.dots i:nth-child(1){background:#ec6a5e}.dots i:nth-child(2){background:#f4bf4f}.dots i:nth-child(3){background:#61c554}
+.titlebar .tb-title{color:var(--text);font-weight:500}
+.titlebar .tb-right{margin-left:auto;font-family:var(--mono);font-size:11px}
+
+.workbench{display:grid;grid-template-columns:230px minmax(0,1fr);flex:1;min-height:0}
+
+/* ---------- rail ---------- */
+.rail{background:var(--bg-rail);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.rail-head{padding:14px 14px 10px}
+.vault{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px}
+.vault .ic{color:var(--text-muted)}
+.rail-head .sub{color:var(--text-faint);font-family:var(--mono);font-size:11px;margin-top:3px}
+.rail-scroll{overflow:auto;padding:4px 8px 10px;flex:1;min-height:0}
+.rail-label{font-size:11px;letter-spacing:.08em;color:var(--text-faint);padding:12px 8px 6px}
+.svc,.navbtn{display:flex;align-items:center;gap:9px;width:100%;height:auto;min-height:32px;padding:6px 9px;
+  border:0;background:transparent;border-radius:5px;text-align:left;color:var(--text-muted);font-size:13px}
+.svc:hover,.navbtn:hover{background:var(--bg-hover);color:var(--text)}
+.svc[aria-checked=true],.navbtn[aria-current=page]{background:var(--bg);color:var(--text);font-weight:600;box-shadow:0 0 0 1px var(--line)}
+.svc .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.svc .st{font-size:11px;color:var(--text-faint);font-weight:400;font-family:var(--mono)}
+.svc.more{color:var(--text-faint);font-size:12px;min-height:28px}
+.navbtn .badge-num{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--accent);
+  background:var(--accent-soft);border-radius:3px;padding:0 5px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--text-faint);flex:none;display:block}
+.dot.ok{background:var(--ok)}.dot.err{background:var(--err)}.dot.idle{background:var(--text-faint)}
+.dot.warn{background:var(--warn)}
+.dot.run{background:var(--accent);box-shadow:0 0 0 0 var(--accent-soft);animation:pulse 1.6s ease-out infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 var(--accent-soft)}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
+.rail-foot{border-top:1px solid var(--line);padding:10px;display:grid;gap:8px}
+.rail-foot .acts{display:flex;gap:8px}
+.rail-foot .acts button{flex:1;justify-content:center}
+.rail-foot .meta{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text-muted)}
+.rail-foot .meta span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---------- pane ---------- */
+.pane{padding:20px 26px 30px;overflow:auto;min-width:0}
+.pane-head{display:flex;align-items:flex-start;gap:16px;margin-bottom:16px}
+.pane-head h1{font-size:17px;font-weight:650;margin:0;letter-spacing:-.1px}
+.pane-head .sub{margin:4px 0 0;color:var(--text-muted);font-size:12px}
+.pane-head .acts{margin-left:auto;display:flex;gap:8px;flex:none}
+
+.card{border:1px solid var(--line);border-radius:6px;background:var(--bg);padding:14px 16px;margin-bottom:14px}
+.card>h3{margin:0 0 4px;font-size:13px;font-weight:650}
+.card>.hint{margin:0 0 8px;color:var(--text-muted);font-size:12px}
+.statuscard{display:flex;align-items:center;gap:12px}
+.statuscard .ico{width:34px;height:34px;border-radius:6px;background:var(--accent-soft);color:var(--accent);
+  display:flex;align-items:center;justify-content:center;flex:none}
+.statuscard .ico .ic{width:18px;height:18px}
+.statuscard .who{flex:1;min-width:0}
+.statuscard .who b{font-size:14px;font-weight:650}
+.statuscard .who p{margin:2px 0 0;font-size:12px;color:var(--text-muted)}
+.pill{display:inline-flex;align-items:center;gap:5px;border-radius:99px;padding:2px 9px;font-size:11px;font-weight:600;
+  border:1px solid var(--line);color:var(--text-muted);background:var(--bg-sunken)}
+.pill.ok{color:var(--ok);border-color:transparent;background:var(--ok-soft)}
+.pill.err{color:var(--err);border-color:transparent;background:var(--err-soft)}
+.pill.run{color:var(--accent);border-color:transparent;background:var(--accent-soft)}
+.pill.warn{color:var(--warn);border-color:transparent;background:var(--warn-soft)}
+
+.field{display:grid;grid-template-columns:124px minmax(0,1fr);gap:3px 14px;align-items:center;padding:9px 0}
+.field+.field{border-top:1px solid var(--line-soft)}
+.field>label{font-size:12px;color:var(--text-muted)}
+.field .ctl{display:flex;align-items:center;gap:8px;min-width:0}
+.field .ctl input{flex:1}
+.field .note{grid-column:2;font-size:11px;color:var(--text-faint)}
+.pw{position:relative;flex:1}
+.pw input{padding-right:32px}
+.pw button{position:absolute;right:2px;top:50%;transform:translateY(-50%);height:26px;width:26px;padding:0;justify-content:center;
+  border-color:transparent;background:transparent;color:var(--text-faint)}
+.pw button:hover{color:var(--text);background:var(--bg-hover)}
+.stack{padding:4px 0}
+.stack .path{font-family:var(--mono);font-size:12px;color:var(--text-muted);word-break:break-all;margin:8px 0 0}
+.banner{display:flex;gap:8px;align-items:flex-start;border-radius:5px;padding:9px 11px;font-size:12px;margin-top:10px;
+  border:1px solid var(--line);background:var(--bg-sunken)}
+.banner.ok{color:var(--ok);border-color:transparent;background:var(--ok-soft)}
+.banner.err{color:var(--err);border-color:transparent;background:var(--err-soft)}
+.banner.warn{color:var(--warn);border-color:transparent;background:var(--warn-soft)}
+.banner b{font-weight:600}
+.banner .txt{flex:1;line-height:1.5;color:var(--text)}
+.banner .txt em{font-style:normal;color:var(--text-muted)}
+
+.rule{display:flex;align-items:center;gap:16px;padding:10px 0}
+.rule+.rule{border-top:1px solid var(--line-soft)}
+.rule .lab{flex:1;min-width:0}
+.rule .lab b{font-weight:500;font-size:13px;display:block}
+.rule .lab span{font-size:11px;color:var(--text-muted)}
+.rule .ctl{flex:none;width:170px}
+.rule .ctl select{width:100%}
+.switch{appearance:none;border:0;width:34px;height:20px;border-radius:99px;background:var(--line);position:relative;margin:0;flex:none;padding:0}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:var(--bg);
+  transition:transform .14s}
+.switch:checked{background:var(--accent)}
+.switch:checked::after{transform:translateX(14px);background:var(--accent-on)}
+.switch:disabled{opacity:.5;cursor:default}
+select:disabled,input:disabled{opacity:.6}
+.switch:focus-visible{outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
+
+details.adv{border-top:1px solid var(--line-soft);margin-top:6px;padding-top:10px}
+details.adv>summary{list-style:none;display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text-muted)}
+details.adv>summary::-webkit-details-marker{display:none}
+details.adv[open]>summary{color:var(--text)}
+details.adv .body{padding:6px 0 0}
+.chev{transition:transform .14s}
+details[open]>summary .chev{transform:rotate(180deg)}
+
+.loginrow{display:flex;align-items:center;gap:12px;padding:8px 0}
+.avatar{width:34px;height:34px;border-radius:6px;background:var(--bg-sunken);border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;font-weight:600;color:var(--text-muted);flex:none}
+.loginrow .who{flex:1;min-width:0}
+.loginrow .who b{font-size:13px}
+.loginrow .who p{margin:2px 0 0;font-size:11px;color:var(--text-muted)}
+.qrbox{display:flex;gap:16px;align-items:flex-start;border:1px solid var(--line);border-radius:6px;background:var(--bg-sunken);
+  padding:14px;margin-top:10px}
+.qrbox .code{background:#fff;border-radius:5px;padding:6px;flex:none}
+.steps{margin:0;padding-left:18px;font-size:12px;color:var(--text-muted);line-height:1.9}
+.steps b{color:var(--text);font-weight:500}
+.qrbox .acts{display:flex;gap:8px;margin-top:10px}
+
+/* ---------- progress ---------- */
+.hero{padding:16px 18px}
+.hero .top{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
+.pct{font-family:var(--mono);font-size:34px;font-weight:600;line-height:1;letter-spacing:-.02em}
+.pct small{font-size:16px;font-weight:500;color:var(--text-muted);margin-left:2px}
+.hero .top .meta{margin-left:auto;text-align:right;display:grid;gap:4px}
+.hero .top .meta .row{display:flex;gap:8px;justify-content:flex-end;align-items:center;color:var(--text-muted);font-size:11px}
+.bar{height:6px;border-radius:99px;background:var(--bg-sunken);border:1px solid var(--line);overflow:hidden;margin:14px 0 12px}
+.bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .3s ease}
+.bar.stopped i{background:var(--text-faint)}
+.stages{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.stage{border:1px solid var(--line);border-radius:5px;padding:7px 9px;background:var(--bg-sunken)}
+.stage .nm{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted)}
+.stage .num{font-family:var(--mono);font-size:11px;color:var(--text-faint);margin-top:3px}
+.stage.done{border-color:transparent;background:var(--ok-soft)}
+.stage.done .nm{color:var(--ok)}
+.stage.now{border-color:var(--accent);background:var(--accent-soft)}
+.stage.now .nm{color:var(--accent);font-weight:600}
+.stage.now .num{color:var(--accent)}
+.stage.hold{border-color:var(--warn);background:var(--warn-soft)}
+.stage.hold .nm{color:var(--warn);font-weight:600}
+.cur{display:flex;gap:8px;align-items:center;margin:12px 0 0;font-family:var(--mono);font-size:12px;color:var(--text-muted);
+  background:var(--bg-sunken);border:1px solid var(--line-soft);border-radius:5px;padding:7px 9px}
+.cur span.txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid2 .card{margin:0 0 14px}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:6px 0;font-size:12px}
+.kv+.kv{border-top:1px solid var(--line-soft)}
+.kv .k{color:var(--text-muted);display:flex;align-items:center;gap:7px}
+.kv .v{font-family:var(--mono)}
+.ops{display:grid;gap:2px}
+.op{display:grid;grid-template-columns:16px minmax(0,1fr) auto auto;align-items:center;gap:10px;padding:6px 0;font-size:12px}
+.op+.op{border-top:1px solid var(--line-soft)}
+.op .p{font-family:var(--mono);font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.op .up{color:var(--accent)}.op .down{color:var(--warn)}
+.op .sz{font-family:var(--mono);font-size:11px;color:var(--text-faint)}
+.op .st{font-size:11px;width:64px;text-align:right}
+.mini{height:3px;border-radius:99px;background:var(--bg-sunken);overflow:hidden;grid-column:2/5;margin-top:-2px}
+.mini i{display:block;height:100%;background:var(--accent)}
+
+/* ---------- history ---------- */
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.chips button{height:26px;font-size:12px;color:var(--text-muted);background:transparent}
+.chips button[aria-pressed=true]{color:var(--accent);background:var(--accent-soft);border-color:transparent;font-weight:600}
+.recs{display:grid;gap:8px}
+.rec{border:1px solid var(--line);border-radius:6px;background:var(--bg);overflow:hidden}
+.rec>summary{list-style:none;display:grid;grid-template-columns:8px 112px auto 76px minmax(50px,1fr) auto 16px;
+  align-items:center;gap:10px;padding:10px 13px;font-size:12px}
+.rec>summary::-webkit-details-marker{display:none}
+.rec>summary:hover{background:var(--bg-hover)}
+.rec .time{font-family:var(--mono);font-size:12px;color:var(--text)}
+.rec .trig{color:var(--text-muted);font-size:11px}
+.rec .counts{font-family:var(--mono);font-size:11px;color:var(--text-muted);display:flex;gap:10px;justify-content:flex-end}
+.rec .counts i{font-style:normal;display:flex;align-items:center;gap:4px}
+.rec .dur{font-family:var(--mono);font-size:11px;color:var(--text-faint);text-align:right;white-space:nowrap}
+.rec .chev{color:var(--text-faint)}
+.rec .body{border-top:1px solid var(--line-soft);padding:12px 13px;background:var(--bg-sunken)}
+.rec .body .res{margin:0 0 10px;font-size:12px;color:var(--text-muted)}
+.rec .body .res b{color:var(--text);font-weight:600}
+.tree{margin:4px 0 12px;font-family:var(--mono);font-size:12px;color:var(--text-muted)}
+.tree .h{display:flex;align-items:center;gap:7px;font-family:var(--sans);font-size:11px;color:var(--text);
+  font-weight:600;margin-bottom:4px}
+.tree ul{list-style:none;margin:0;padding-left:14px;border-left:1px solid var(--line)}
+.tree>ul{padding-left:2px;border-left:0}
+.tree li{padding:2px 0}
+.tree .d{color:var(--text-faint)}
+.fail-list{margin:4px 0 12px;padding-left:16px;font-family:var(--mono);font-size:12px;color:var(--err)}
+.fail-list li{padding:2px 0;word-break:break-all}
+details.diag{margin-top:4px}
+details.diag>summary{list-style:none;display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text-muted)}
+details.diag>summary::-webkit-details-marker{display:none}
+details.diag pre{margin:8px 0 0;padding:10px;border:1px solid var(--line);border-radius:5px;background:var(--bg);
+  font-family:var(--mono);font-size:11px;line-height:1.6;color:var(--text-muted);overflow:auto;max-height:220px;white-space:pre-wrap}
+.rec .msg{margin:0 0 10px;padding:8px 10px;border-radius:5px;background:var(--err-soft);color:var(--err);font-size:12px}
+.empty{color:var(--text-muted);font-size:12px;padding:24px;text-align:center;border:1px dashed var(--line);border-radius:6px}
+
+/* ---------- notes ---------- */
+.notes{position:fixed;right:16px;bottom:16px;z-index:30;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.notes .panel{width:344px;max-height:58vh;overflow:auto;background:var(--bg);border:1px solid var(--line);
+  border-radius:8px;box-shadow:var(--shadow);padding:14px 16px}
+.notes .panel h3{margin:0 0 8px;font-size:13px;display:flex;align-items:center;gap:7px}
+.notes .panel ul{margin:0;padding-left:16px;font-size:12px;line-height:1.65;color:var(--text-muted)}
+.notes .panel li{margin-bottom:7px}
+.notes .panel li b{color:var(--text);font-weight:600}
+.notes .toggle{height:32px;border-radius:99px;padding:0 14px;background:var(--bg);box-shadow:var(--shadow);font-weight:600;font-size:12px}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}
+@media (max-width:860px){
+  .workbench{grid-template-columns:1fr}
+  .rail{border-right:0;border-bottom:1px solid var(--line)}
+  .rail-scroll{max-height:32vh}
+  .rail-scroll{display:grid;gap:2px}
+  .svc-list,.nav{display:grid}
+  .grid2{grid-template-columns:1fr}
+  .pane{padding:16px}
+  .rec>summary{grid-template-columns:auto 1fr auto;grid-auto-flow:row;row-gap:4px}
+  .rec .dur,.rec .trig{grid-column:2}
+  body{padding:12px 8px 56px}
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M17.5 19a4.5 4.5 0 0 0 .4-8.98A6 6 0 0 0 6.3 10.4A4.5 4.5 0 0 0 6.5 19Z"/></symbol>
+  <symbol id="i-disc" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.5"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 13 9 5 9-5"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="7" cy="17" r="2"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l2.5-7 4 14 2.5-7h5"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3L4 8"/><path d="M4 4v4h4"/><path d="M12 8.5V12l2.5 1.8"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m4.5 12.5 5 5L20 6.8"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8.5 5.5v13l10.5-6.5-10.5-6.5Z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9.5 5.5v13M14.5 5.5v13"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M6.5 10.5 12 5l5.5 5.5"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 5v14M6.5 13.5 12 19l5.5-5.5"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9.5 7V5h5v2M6.5 7l.9 13h9.2l.9-13"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h3.6l1.9 2.5H19a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h7.5L18 7.5V21H6z"/><path d="M13.5 3v4.5H18"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10" width="15" height="10.5" rx="2"/><path d="M8 10V7.2a4 4 0 0 1 8 0V10"/></symbol>
+  <symbol id="i-scan" viewBox="0 0 24 24"><path d="M3 8.5V5.5A2 2 0 0 1 5 3.5h3M21 8.5v-3a2 2 0 0 0-2-2h-3M3 15.5v3a2 2 0 0 0 2 2h3M21 15.5v3a2 2 0 0 1-2 2h-3"/></symbol>
+  <symbol id="i-plan" viewBox="0 0 24 24"><path d="M4 5h16M4 12h10M4 19h6"/><circle cx="18" cy="12" r="1.6"/><circle cx="14" cy="19" r="1.6"/></symbol>
+  <symbol id="i-swap" viewBox="0 0 24 24"><path d="M7 4v13M3.5 13.5 7 17l3.5-3.5"/><path d="M17 20V7M13.5 10.5 17 7l3.5 3.5"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M6 21V4h12l-1.6 4L18 12H6"/></symbol>
+  <symbol id="i-qr" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1"/><path d="M14 14h3v3h-3zM18.5 20.5h2M14 20.5h1.5"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20.5 12a8.5 8.5 0 1 1-2.8-6.3"/><path d="M20.5 4v4.5H16"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0"/></symbol>
+  <symbol id="i-eyeoff" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0"/><path d="M3 3l18 18"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.8h.01"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8 2 2-2 2-2-2-2 2"/></symbol>
+  <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3v5M15 3v5M6.5 8h11v3a5.5 5.5 0 0 1-11 0z"/><path d="M12 16.5V21"/></symbol>
+</svg>
+
+<div class="demo">
+  <span class="tag">方案 1 · 工作台导航</span>
+  <span>演示数据 · 不连接网盘</span>
+  <div class="grow"></div>
+  <label for="demoState">模拟状态</label>
+  <select id="demoState">
+    <option value="unconfigured">未配置</option>
+    <option value="connected">已连接</option>
+    <option value="failed">连接失败</option>
+    <option value="syncing">同步中</option>
+  </select>
+  <div class="seg" role="group" aria-label="主题">
+    <button type="button" id="themeLight" aria-pressed="true">浅色</button>
+    <button type="button" id="themeDark" aria-pressed="false">深色</button>
+  </div>
+</div>
+
+<div class="win">
+  <div class="titlebar">
+    <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="tb-title">我的笔记 — Obsidian</span>
+    <span class="tb-right">设置 · remotely-save-next</span>
+  </div>
+  <div class="workbench">
+    <aside class="rail" aria-label="同步工作台">
+      <div class="rail-head">
+        <div class="vault"><svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg>我的笔记</div>
+        <div class="sub">remotely-save-next · v0.6.4</div>
+      </div>
+      <div class="rail-scroll">
+        <div class="rail-label" id="svcLabel">同步服务</div>
+        <div class="svc-list" role="radiogroup" aria-labelledby="svcLabel" id="svcList"></div>
+        <div class="rail-label">导航</div>
+        <nav class="nav" id="nav" aria-label="同步页面"></nav>
+      </div>
+      <div class="rail-foot" id="railFoot"></div>
+    </aside>
+    <main class="pane" id="pane" tabindex="-1"></main>
+  </div>
+</div>
+
+<div class="notes">
+  <div class="panel" id="notesPanel" hidden>
+    <h3><svg class="ic" aria-hidden="true"><use href="#i-info"/></svg>交互说明 · 本方案与前版的差异</h3>
+    <ul>
+      <li><b>服务切换常驻左侧栏。</b>服务列表从设置顶部的单选组移入左栏，切换服务不离开当前页，也不再重建整个设置面板。</li>
+      <li><b>同步进度变成右栏内嵌面板。</b>原来只在设置顶部显示一行文字与 <code>progress</code> 条，现在有阶段、百分比、当前文件、速度与计数，暂停/停止就在旁边。</li>
+      <li><b>连接结果就地显示。</b>“测试连接”只在输入框旁的状态点亮起并给出说明，不再弹出提示；失败原因直接写在连接区域。</li>
+      <li><b>扫码/授权取代弹窗。</b>百度、夸克、阿里云盘的登录改为连接区域里就地展开的步骤区，收起即可取消，不打断填写。</li>
+      <li><b>“立即同步”随状态变形。</b>同步期间同一个按钮变成暂停/继续，并出现“停止”，与进度面板共用同一状态，避免两处按钮说法不一致。</li>
+      <li><b>三块导航替代两个标签。</b>原来的“同步设置 / 同步记录”两个标签页，拆成设置主页、同步进度、同步记录三项，进度可以一边看一边改设置。</li>
+      <li><b>记录列表可筛选、可展开。</b>状态筛选条 + 单行摘要（时间、方向、文件数、耗时），冲突、未完成文件、诊断摘要分层展开，不再挤在一个 <code>details</code> 里。</li>
+      <li><b>状态一眼可辨。</b>未配置、已连接、连接失败、同步中各有独立状态点与下一步提示，左栏和主区同时反映同一状态。</li>
+    </ul>
+  </div>
+  <button type="button" class="toggle" id="notesToggle" aria-expanded="false" aria-controls="notesPanel">
+    <svg class="ic" aria-hidden="true"><use href="#i-info"/></svg>交互说明
+  </button>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+
+  /* ---------------- demo data ---------------- */
+  var SERVICES = {
+    webdav: { name: "WebDAV", icon: "i-server", kind: "dav", state: "connected",
+      account: "example-user", host: "https://dav.jianguoyun.com/dav/", dir: "/我的笔记",
+      last: "2026-10-15 14:32", note: "坚果云 · 一个账号可多库共用" },
+    baidu: { name: "百度网盘", icon: "i-cloud", kind: "cloud", state: "connected",
+      account: "百度用户 138****6688", host: "", dir: "/apps/remotely-save/我的笔记",
+      last: "2026-10-15 14:32", note: "扫码授权 · 有效期剩余 21 天" },
+    quark: { name: "夸克网盘", icon: "i-disc", kind: "cloud", state: "unconfigured",
+      account: "尚未登录", host: "", dir: "/remotely-save/我的笔记",
+      last: "—", note: "需要用夸克 App 扫码授权后才能同步" },
+    aliyun: { name: "阿里云盘", icon: "i-layers", kind: "cloud", state: "failed",
+      account: "登录已过期", host: "", dir: "/remotely-save/我的笔记",
+      last: "2026-10-14 21:08", note: "令牌已过期，请重新扫码登录" }
+  };
+  var ORDER = ["webdav", "baidu", "quark", "aliyun"];
+  var ST = {
+    unconfigured: ["未配置", "idle"],
+    connected: ["已连接", "ok"],
+    failed: ["连接失败", "err"],
+    syncing: ["同步中", "run"]
+  };
+  var NAVID = { home: "设置主页", progress: "同步进度", history: "同步记录" };
+  var NAVICON = { home: "i-sliders", progress: "i-activity", history: "i-history" };
+  var FILES = [
+    "笔记/日记/2026-10-15.md", "工作/周报/2026-W42 周报.md", "笔记/读书笔记/《置身事内》摘录.md",
+    "工作/附件/会议记录 2026-10-15.pdf", "笔记/学习/TypeScript 类型体操.md", "附件/录音 2026-10-15.m4a",
+    "工作/项目/需求梳理.md", "templates/会议纪要模板.md", "笔记/日记/2026-10-14.md", "归档/2025/年终总结.md"
+  ];
+  var TOTAL_ITEMS = 236, PLAN_BYTES = "20.1 MB";
+
+  var records = [
+    { id: 5, time: "2026-10-15 14:32", status: "success", trig: "手动同步", secs: "4.2", bytes: "2.4 MB",
+      counts: { upload: 6, download: 2, delete: 0 }, conflicts: 0,
+      files: { upload: ["笔记/日记/2026-10-15.md", "工作/周报/2026-W42 周报.md", "笔记/读书笔记/《置身事内》摘录.md"],
+        download: ["工作/项目/需求梳理.md"], delete: [] },
+      failed: [], res: "成功 6 · 失败 0 · 未执行 0",
+      diag: '{\n  "startedAt": 1760533920000,\n  "status": "success",\n  "plan": { "total": 8, "upload": 6, "download": 2, "delete": 0, "conflicts": 0 },\n  "webdav": { "readRequests": 34, "retries": 0, "requestTimeMs": 3820 }\n}' },
+    { id: 4, time: "2026-10-15 14:10", status: "partial", trig: "定时同步", secs: "6.8", bytes: "1.1 MB",
+      counts: { upload: 3, download: 0, delete: 0 }, conflicts: 0,
+      files: { upload: ["笔记/学习/TypeScript 类型体操.md", "笔记/日记/2026-10-14.md", "templates/会议纪要模板.md"],
+        download: [], delete: [] },
+      failed: ["工作/附件/会议记录 2026-10-15.pdf", "附件/录音 2026-10-15.m4a"],
+      err: "上传结果未通过完整性校验，请检查网络及网盘中的目标文件后重新同步（失败阶段：传输）。",
+      res: "成功 3 · 失败 2 · 未执行 0",
+      diag: '{\n  "status": "partial",\n  "completed": 3,\n  "failed": 2,\n  "failurePhase": "syncing",\n  "failures": [\n    { "path": "工作/附件/会议记录 2026-10-15.pdf", "code": "upload_not_confirmed" }\n  ]\n}' },
+    { id: 3, time: "2026-10-15 13:58", status: "success", trig: "保存时同步", secs: "0.9", bytes: "12.4 KB",
+      counts: { upload: 1, download: 1, delete: 0 }, conflicts: 0,
+      files: { upload: ["笔记/日记/2026-10-15.md"], download: ["工作/项目/需求梳理.md"], delete: [] },
+      failed: [], res: "成功 2 · 失败 0 · 未执行 0",
+      diag: '{\n  "status": "success",\n  "plan": { "total": 2, "upload": 1, "download": 1, "delete": 0 }\n}' },
+    { id: 2, time: "2026-10-15 13:20", status: "success", trig: "定时同步", secs: "3.1", bytes: "880 KB",
+      counts: { upload: 4, download: 3, delete: 1 }, conflicts: 1,
+      files: { upload: ["笔记/日记/2026-10-15.md", "笔记/学习/TypeScript 类型体操.md"],
+        download: ["工作/周报/2026-W42 周报.md"], delete: ["归档/2025/年终总结.md"] },
+      failed: [], res: "成功 7 · 失败 0 · 未执行 0 · 冲突 1（保留双方副本）",
+      conflictFile: "笔记/日记/2026-10-15 (冲突副本 2026-10-15 13-20).md",
+      diag: '{\n  "status": "success",\n  "plan": { "total": 8, "upload": 4, "download": 3, "delete": 1, "conflicts": 1 },\n  "skipped": 1\n}' },
+    { id: 1, time: "2026-10-15 12:00", status: "unchanged", trig: "启动时同步", secs: "1.2", bytes: "0 B",
+      counts: { upload: 0, download: 0, delete: 0 }, conflicts: 0,
+      files: { upload: [], download: [], delete: [] }, failed: [],
+      res: "扫描完成 · 没有变化", diag: '{\n  "status": "unchanged",\n  "plan": { "total": 0 }\n}' }
+  ];
+  var REC_LABEL = { success: "已完成", unchanged: "没有变化", partial: "部分完成", failed: "失败", cancelled: "已停止", running: "同步中" };
+  var REC_TONE = { success: "ok", unchanged: "", partial: "warn", failed: "err", cancelled: "", running: "run" };
+
+  var cur = "webdav", screen = "home", advOpen = false, qrOpen = false, pwVisible = false, filter = "all";
+  var p = { running: false, paused: false, value: 0, elapsed: 0, stopped: false, msg: "" };
+  var timer = null;
+
+  /* ---------------- tiny helpers ---------------- */
+  function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function ic(id, cls) { return '<svg class="ic ' + (cls || "") + '" aria-hidden="true"><use href="#' + id + '"/></svg>'; }
+  function svc() { return SERVICES[cur]; }
+  function isCloud() { return svc().kind === "cloud"; }
+  function stateOf() { return svc().state; }
+  function fmtBytes(b) { return b < 1024 ? b + " B" : b < 1048576 ? (b / 1024).toFixed(1) + " KB" : (b / 1048576).toFixed(1) + " MB"; }
+
+  function qrSVG() {
+    var size = 25, cell = 6, seed = 987654321, d = "";
+    function rnd() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+    for (var y = 0; y < size; y++) for (var x = 0; x < size; x++) {
+      var finder = (x < 8 && y < 8) || (x > size - 9 && y < 8) || (x < 8 && y > size - 9);
+      if (finder) continue;
+      if (rnd() > 0.55) d += '<rect x="' + x * cell + '" y="' + y * cell + '" width="' + cell + '" height="' + cell + '"/>';
+    }
+    [[0, 0], [size - 7, 0], [0, size - 7]].forEach(function (f) {
+      d += '<rect x="' + (f[0] + .5) * cell + '" y="' + (f[1] + .5) * cell + '" width="' + (6 * cell) + '" height="' + (6 * cell) + '" fill="none" stroke="#111" stroke-width="' + cell + '"/>';
+      d += '<rect x="' + (f[0] + 2) * cell + '" y="' + (f[1] + 2) * cell + '" width="' + (3 * cell) + '" height="' + (3 * cell) + '"/>';
+    });
+    return '<svg viewBox="0 0 ' + (size * cell) + ' ' + (size * cell) + '" width="132" height="132" role="img" aria-label="登录二维码（演示图形）"><rect width="100%" height="100%" fill="#fff"/><g fill="#111">' + d + "</g></svg>";
+  }
+
+  function treeHTML(paths, label, icon) {
+    if (!paths.length) return "";
+    var root = { children: {}, files: [] };
+    paths.forEach(function (path) {
+      var parts = path.split("/"), node = root;
+      for (var i = 0; i < parts.length - 1; i++) node = node.children[parts[i]] || (node.children[parts[i]] = { children: {}, files: [] });
+      node.files.push(parts[parts.length - 1]);
+    });
+    function walk(node) {
+      var html = "<ul>";
+      Object.keys(node.children).forEach(function (k) {
+        html += '<li><span class="d">' + esc(k) + "/</span>" + walk(node.children[k]) + "</li>";
+      });
+      node.files.forEach(function (f) { html += "<li>" + esc(f) + "</li>"; });
+      return html + "</ul>";
+    }
+    return '<div class="tree"><div class="h">' + ic(icon, "ic-sm") + esc(label) + " " + paths.length + "</div>" + walk(root) + "</div>";
+  }
+
+  /* ---------------- rail ---------------- */
+  function renderRail() {
+    $("#svcList").innerHTML = ORDER.map(function (id) {
+      var s = SERVICES[id], st = ST[s.state];
+      return '<button type="button" class="svc" role="radio" aria-checked="' + (id === cur) + '" data-service="' + id + '">' +
+        ic(s.icon) + '<span class="nm">' + esc(s.name) + '</span><span class="st">' + esc(st[0]) + '</span>' +
+        '<span class="dot ' + st[1] + '" aria-hidden="true"></span></button>';
+    }).join("") +
+      '<button type="button" class="svc more" data-more="1">' + ic("i-plug") + '<span class="nm">更多服务（Dropbox · OneDrive · S3）</span></button>';
+
+    $("#nav").innerHTML = ["home", "progress", "history"].map(function (id) {
+      var badge = id === "progress" && p.running ? '<span class="badge-num">' + Math.round(p.value) + "%</span>" : "";
+      return '<button type="button" class="navbtn" data-screen="' + id + '"' + (id === screen ? ' aria-current="page"' : "") +
+        ">" + ic(NAVICON[id]) + "<span>" + NAVID[id] + "</span>" + badge + "</button>";
+    }).join("");
+
+    var st = ST[stateOf()];
+    $("#railFoot").innerHTML =
+      '<div class="acts">' + syncButtons() + "</div>" +
+      '<div class="meta"><span class="dot ' + st[1] + '" aria-hidden="true"></span><span>' +
+      esc(st[0]) + " · 上次同步 " + esc(svc().last) + "</span></div>";
+  }
+
+  function syncButtons() {
+    if (p.running) {
+      return '<button type="button" class="primary" data-act="pause">' + ic(p.paused ? "i-play" : "i-pause") +
+        (p.paused ? "继续" : "暂停") + '</button>' +
+        '<button type="button" class="danger" data-act="stop" title="停止后保留已完成的文件；当前请求完成后结束">' + ic("i-stop") + "停止</button>";
+    }
+    var dis = stateOf() === "connected" ? "" : " disabled";
+    var title = stateOf() === "connected" ? "" : "请先在设置主页完成连接设置";
+    return '<button type="button" class="primary block" data-act="start"' + dis + (title ? ' title="' + title + '"' : "") + ">" +
+      ic("i-refresh") + "立即同步</button>";
+  }
+
+  /* ---------------- pane dispatch ---------------- */
+  function renderPane() {
+    var html = screen === "home" ? homeHTML() : screen === "progress" ? progressHTML() : historyHTML();
+    $("#pane").innerHTML = html;
+    if (screen === "progress") tickUI();
+  }
+  function render() { renderRail(); renderPane(); }
+
+  /* ---------------- screen 1: 设置主页 ---------------- */
+  function stateBanner() {
+    var st = stateOf();
+    if (st === "unconfigured") return banner("warn", "i-alert", "还没有完成连接设置",
+      esc(isCloud() ? "请先点击“扫码登录”，用手机 App 授权后即可同步。" : "请先填写服务器地址、账号与密码，然后点击“测试连接”。"));
+    if (st === "failed") return banner("err", "i-alert", "连接失败",
+      isCloud() ? esc(svc().name) + "令牌已过期（HTTP 401）：<em>登录已失效，请重新扫码</em>。" :
+        "无法连接上 Webdav 服务器。<em>可能是地址 / 账号 / 密码 / 鉴权类型等错误。</em>");
+    if (st === "syncing") return banner("ok", "i-activity", "正在同步中",
+      "已完成 <em>" + completedItems() + " / " + TOTAL_ITEMS + " 项</em>。同步期间可继续查看设置，修改会在下次同步生效。");
+    return banner("ok", "i-check", "连接正常，可以同步",
+      "上次同步 " + esc(svc().last) + " · 上传 6 / 下载 2 / 删除 0。<em>测试连接会写入并删除一个临时文件。</em>");
+  }
+  function banner(tone, icon, title, text) {
+    return '<div class="banner ' + tone + '" role="status"><svg class="ic" aria-hidden="true"><use href="#' + icon + '"/></svg>' +
+      '<span class="txt"><b>' + title + "</b><br>" + text + "</span></div>";
+  }
+
+  function connectionCard() {
+    var st = stateOf(), dis = p.running ? " disabled" : "";
+    if (!isCloud()) {
+      var empty = st === "unconfigured";
+      return '<section class="card"><h3>连接</h3>' +
+        '<p class="hint">连接信息保存在本地，仅本机可读取。</p>' +
+        '<div class="field"><label for="f-addr">服务器地址</label><div class="ctl">' +
+        '<input id="f-addr" type="url" spellcheck="false" autocomplete="url" placeholder="https://dav.example.com/dav/" value="' +
+        esc(empty ? "" : svc().host) + '"' + dis + ">" +
+        '<button type="button" data-act="test"' + dis + ">" + ic("i-plug") + "测试连接</button>" +
+        '<span class="dot ' + (st === "connected" ? "ok" : st === "failed" ? "err" : "idle") + '" role="img" aria-label="' +
+        (st === "connected" ? "连接成功" : st === "failed" ? "连接失败" : "尚未测试连接") + '"></span>' +
+        "</div></div>" +
+        '<div class="field"><label for="f-user">账号</label><div class="ctl">' +
+        '<input id="f-user" type="text" spellcheck="false" autocomplete="username" value="' + esc(empty ? "" : svc().account) + '"' + dis + ">" +
+        "</div></div>" +
+        '<div class="field"><label for="f-pass">密码</label><div class="ctl">' +
+        '<div class="pw"><input id="f-pass" type="' + (pwVisible ? "text" : "password") + '" autocomplete="current-password" value="' +
+        esc(empty ? "" : "app-password-example") + '"' + dis + ">" +
+        '<button type="button" data-act="pw" aria-pressed="' + pwVisible + '" aria-label="' + (pwVisible ? "隐藏密码" : "显示密码") + '">' +
+        ic(pwVisible ? "i-eyeoff" : "i-eye") + "</button></div></div></div>" +
+        '<div class="field"><label for="f-dir">同步目录</label><div class="ctl">' +
+        '<input id="f-dir" type="text" spellcheck="false" value="' + esc(svc().dir) + '"' + dis + ">" +
+        '</div><span class="note">自动追加当前笔记本名称：我的笔记</span></div>' +
+        '<div class="stack"><div class="path">' + (empty ? "完整路径：填写服务器地址后显示"
+          : "完整路径：" + esc(svc().host.replace(/\/$/, "")) + esc(svc().dir) + "/") + "</div></div>" +
+        stateBanner() + "</section>";
+    }
+    var logged = st === "connected" || st === "syncing";
+    return '<section class="card"><h3>登录</h3>' +
+      '<p class="hint">' + esc(svc().note) + "</p>" +
+      '<div class="loginrow"><div class="avatar">' + ic(svc().icon) + "</div>" +
+      '<div class="who"><b>' + esc(logged ? svc().account : "尚未登录") + "</b>" +
+      "<p>" + esc(logged ? "已授权 · 2026-10-08 授权，有效期剩余 21 天" : "未授权 · 无法上传或下载任何文件") + "</p></div>" +
+      '<button type="button" data-act="qr"' + (p.running ? " disabled" : "") + ">" + ic("i-qr") +
+      (logged ? "重新登录" : "扫码登录") + "</button></div>" +
+      '<div class="field"><label for="f-dir">同步目录</label><div class="ctl">' +
+      '<input id="f-dir" type="text" spellcheck="false" value="' + esc(svc().dir) + '"' + dis + "></div>" +
+      '<span class="note">网盘内会自动创建与笔记本同名的文件夹</span></div>' +
+      (qrOpen ? '<div class="qrbox"><div class="code">' + qrSVG() + "</div><div style=\'flex:1;min-width:0\'>" +
+        '<ol class="steps"><li>用手机打开 <b>' + esc(svc().name) + " App</b>，进入“我的 → 扫一扫”。</li>" +
+        "<li>扫描左侧二维码，在手机上确认授权。</li>" +
+        "<li>授权成功后这里会显示账号名称，无需刷新页面。</li></ol>" +
+        '<div class="acts"><button type="button" data-act="qr-close">收起</button>' +
+        '<button type="button" data-act="qr-refresh">' + ic("i-refresh") + "重新生成</button></div></div></div>" : "") +
+      stateBanner() + "</section>";
+  }
+
+  function homeHTML() {
+    var s = svc(), st = ST[stateOf()], dis = p.running ? " disabled" : "";
+    var strip = p.running ? '<div class="cur" style="margin:0 0 14px">' + ic("i-activity", "ic-sm") +
+      "<span class=\"txt\">同步中 · " + Math.round(p.value) + "% · 当前 " + esc(currentFile()) + "</span>" +
+      '<button type="button" class="ghost" data-screen="progress" style="margin-left:auto;height:26px">查看进度</button></div>' : "";
+    return '<header class="pane-head"><div><h1>设置主页</h1>' +
+      '<p class="sub">' + esc(s.name) + " · " + esc(st[0]) + " · " +
+      (stateOf() === "unconfigured" ? "尚未同步过" : "上次同步 " + esc(s.last)) + "</p></div>" +
+      '<div class="acts">' + syncButtons() + "</div></header>" +
+      strip +
+      '<section class="card statuscard"><div class="ico">' + ic(s.icon) + "</div>" +
+      '<div class="who"><b>' + esc(s.name) + "</b><p>" + esc(s.note) + "</p></div>" +
+      '<span class="pill ' + st[1] + '"><span class="dot ' + st[1] + '" aria-hidden="true"></span>' + esc(st[0]) + "</span></section>" +
+      connectionCard() +
+      '<section class="card"><h3>同步设置</h3><p class="hint">修改后立即保存，下次同步生效。</p>' +
+      '<div class="rule"><div class="lab"><b>保存时同步</b><span>连续保存会合并为一次同步</span></div>' +
+      '<input class="switch" type="checkbox" role="switch" id="f-onsave" aria-label="保存时同步" checked' + dis + "></div>" +
+      '<div class="rule"><div class="lab"><b>定时同步</b><span>后台按固定间隔检查变化</span></div><div class="ctl">' +
+      '<select id="f-interval" aria-label="定时同步"' + dis + '><option>关闭</option><option>每 1 分钟</option>' +
+      '<option selected>每 5 分钟</option><option>每 10 分钟</option><option>每 30 分钟</option></select></div></div>' +
+      '<div class="rule"><div class="lab"><b>冲突处理</b><span>两端都有修改时，保留修改时间较新的版本</span></div><div class="ctl">' +
+      '<select id="f-conflict" aria-label="冲突处理"' + dis + '><option selected>保留较新文件（推荐）</option>' +
+      "<option>保留双方副本</option></select></div></div>" +
+      '<details class="adv"' + (advOpen ? " open" : "") + '><summary>' + ic("i-key", "ic-sm") +
+      "<span>高级设置</span>" + ic("i-chev", "ic-sm chev") + "</summary>" +
+      '<div class="body"><div class="rule"><div class="lab"><b>端到端加密密码</b>' +
+      "<span>未设置。设置后文件会在本地上传前加密。</span></div>" +
+      '<button type="button" class="ghost"' + dis + ">" + ic("i-lock") + "设置密码</button></div>" +
+      '<div class="rule"><div class="lab"><b>原有配置服务</b><span>Dropbox · OneDrive · S3（需要各自的安全密钥）</span></div>' +
+      '<button type="button" class="ghost" data-act="legacy">打开</button></div>' +
+      '<div class="rule"><div class="lab"><b>排除规则 / 只允许目录</b><span>高级用法，普通同步无需修改</span></div>' +
+      '<button type="button" class="ghost" data-act="legacy">配置</button></div></div></details></section>' +
+      '<p class="hint muted" style="margin:2px 2px 0">设置会在停止输入后自动保存。</p>';
+  }
+
+  /* ---------------- screen 2: 同步进度 ---------------- */
+  function phaseIndex(v) { return v < 18 ? 0 : v < 30 ? 1 : v < 92 ? 2 : 3; }
+  function currentFile() { return FILES[Math.min(FILES.length - 1, Math.floor(p.value / 11))]; }
+  function completedItems() { return p.value < 30 ? 0 : Math.round((p.value - 30) / 62 * TOTAL_ITEMS); }
+  // 扫描阶段的发现数量：本地与网盘各占一半，随进度增长
+  function scanStat() {
+    var files = Math.round(p.value * 11), folders = 4 + Math.round(p.value * 1.2);
+    return "已发现 " + files + " 个文件、" + folders + " 个文件夹";
+  }
+  function phaseInfo() {
+    var i = phaseIndex(p.value);
+    var labels = [["扫描", scanStat()],
+      ["规划", "计算需要同步的文件"], ["传输", "已完成 " + completedItems() + " / " + TOTAL_ITEMS + " 项"],
+      ["收尾", "写入本地缓存与同步记录"]];
+    return { i: i, labels: labels };
+  }
+
+  function progressHTML() {
+    var ph = phaseInfo(), i = ph.i, v = Math.round(p.value);
+    var stages = stagesHTML();
+
+    var sub = p.running ? (p.paused ? "已暂停 · 已完成 " + completedItems() + " / " + TOTAL_ITEMS + " 项"
+      : (p.value < 30 ? "正在扫描网盘与本地，" + scanStat() : "正在同步 · 已完成 " + completedItems() + " / " + TOTAL_ITEMS + " 项"))
+      : p.stopped ? "同步已停止，已完成的文件保留" : "尚未开始 · 连接正常，可以开始同步";
+
+    return '<header class="pane-head"><div><h1>同步进度</h1><p class="sub" id="progSub">' + esc(sub) + "</p></div>" +
+      '<div class="acts">' + syncButtons() + "</div></header>" +
+      (p.msg ? '<div class="banner ' + p.msg.tone + '" role="status"><svg class="ic" aria-hidden="true"><use href="#' + p.msg.icon + '"/></svg><span class="txt"><b>' + p.msg.title + "</b><br>" + p.msg.text + "</span></div>" : "") +
+      '<section class="card hero"><div class="top">' +
+      '<div class="pct" id="pct" aria-live="off">' + v + "<small>%</small></div>" +
+      '<div class="meta"><div class="row"><span>传输速度</span><span class="mono" id="spd">' +
+      (p.running && !p.paused && i === 2 ? "↑ 上传 2.4 MB/s · ↓ 下载 640 KB/s" : "—") + "</span></div>" +
+      '<div class="row"><span>已用时间</span><span class="mono" id="ela">' + p.elapsed.toFixed(1) + " 秒</span></div></div></div>" +
+      '<div class="bar' + (p.stopped ? " stopped" : "") + '" role="progressbar" aria-label="同步进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + v + '">' +
+      '<i id="bar" style="width:' + v + '%"></i></div>' +
+      '<div class="stages" id="stages">' + stages + "</div>" +
+      '<p class="cur"><span class="mono faint">当前</span><span class="txt mono" id="curPath">' +
+      esc(p.running && !p.paused ? currentFile() : "—") + "</span></p></section>" +
+      '<div class="grid2"><section class="card" id="statsCard">' + statsHTML() + "</section>" +
+      '<section class="card" id="timingCard">' + timingHTML() + "</section></div>" +
+      '<section class="card" id="opsCard"><h3>最近的文件操作</h3>' + opsHTML() + "</section>";
+  }
+
+  function stagesHTML() {
+    var v = Math.round(p.value), i = p.finished ? 4 : phaseIndex(p.value);
+    return phaseInfo().labels.map(function (l, n) {
+      var cls = p.finished ? "done" : p.stopped ? (n < i ? "done" : n === i ? "hold" : "") : p.paused && n === i ? "hold" : n < i ? "done" : n === i ? "now" : "";
+      var num = p.finished ? "完成" : p.stopped ? (n < i ? "完成" : n === i ? "已停止" : "未执行") : p.paused && n === i ? "已暂停" : n < i ? "完成" : n === i ? v + "%" : "等待";
+      return '<div class="stage ' + cls + '"><div class="nm">' +
+        ic(n < i || p.finished ? "i-check" : p.stopped && n > i ? "i-x" : ["i-scan", "i-plan", "i-swap", "i-flag"][n], "ic-sm") + l[0] +
+        '</div><div class="num">' + num + "</div></div>";
+    }).join("");
+  }
+  function statsHTML() {
+    return "<h3>本次统计</h3>" +
+      '<div class="kv"><span class="k">' + ic("i-up", "ic-sm") + '上传</span><span class="v">' + (p.value > 30 ? Math.max(1, Math.round(p.value / 16)) : 0) + "</span></div>" +
+      '<div class="kv"><span class="k">' + ic("i-down", "ic-sm") + '下载</span><span class="v">' + (p.value > 55 ? 2 : 0) + "</span></div>" +
+      '<div class="kv"><span class="k">' + ic("i-trash", "ic-sm") + '删除</span><span class="v">0</span></div>' +
+      '<div class="kv"><span class="k">' + ic("i-flag", "ic-sm") + '冲突</span><span class="v">' + (p.value > 40 ? 1 : 0) + "</span></div>" +
+      '<div class="kv"><span class="k">已完成大小</span><span class="v">' + fmtBytes(Math.round(p.value / 100 * 20.1 * 1048576)) + " / " + PLAN_BYTES + "</span></div>" +
+      '<div class="kv"><span class="k">跳过空文件</span><span class="v">2</span></div>';
+  }
+  function timingHTML() {
+    return "<h3>阶段耗时</h3>" +
+      '<div class="kv"><span class="k">扫描网盘</span><span class="v">' + (p.value > 18 ? "1.4 秒" : p.value ? "进行中" : "—") + "</span></div>" +
+      '<div class="kv"><span class="k">扫描本地</span><span class="v">' + (p.value > 18 ? "0.6 秒" : p.value ? "进行中" : "—") + "</span></div>" +
+      '<div class="kv"><span class="k">规划</span><span class="v">' + (p.value > 30 ? "0.2 秒" : p.value > 18 ? "进行中" : "—") + "</span></div>" +
+      '<div class="kv"><span class="k">传输</span><span class="v">' + (p.value > 92 ? "6.1 秒" : p.value > 30 ? (p.stopped ? "已中断" : "进行中") : "—") + "</span></div>" +
+      '<div class="kv"><span class="k">收尾</span><span class="v">' + (p.stopped ? "未执行" : p.finished ? "0.4 秒" : p.value > 92 ? "进行中" : "—") + "</span></div>";
+  }
+
+  function opsHTML() {
+    if (!p.running && !p.stopped) return '<p class="hint muted" style="margin:6px 0">' +
+      (p.finished ? "本次同步已完成，逐条明细见同步记录。" : "开始同步后，这里会显示正在传输的文件。") + "</p>";
+    var base = Math.min(FILES.length - 1, Math.floor(p.value / 11)), rows = "";
+    var frac = (p.value % 11) / 11;
+    for (var n = 0; n < 5; n++) {
+      var idx = (base - n + FILES.length) % FILES.length;
+      var path = FILES[idx], up = n % 3 !== 2;
+      var state = n === 0 && p.running && !p.paused ? "传输中" : p.paused && n === 0 ? "已暂停" : "完成";
+      rows += '<div class="op">' + ic(up ? "i-up" : "i-down", "ic-sm " + (up ? "up" : "down")) +
+        '<span class="p">' + esc(path) + "</span>" +
+        '<span class="sz">' + fmtBytes(120000 + idx * 470000) + "</span>" +
+        '<span class="st ' + (state === "传输中" ? "" : "muted") + '">' + state + "</span>" +
+        (state === "传输中" ? '<div class="mini"><i style="width:' + Math.round(frac * 100) + '%"></i></div>' : "") + "</div>";
+    }
+    return '<div class="ops">' + rows + "</div>";
+  }
+
+  /* ---------------- screen 3: 同步记录 ---------------- */
+  function recHTML(r) {
+    var tone = REC_TONE[r.status], c = r.counts;
+    var hasConflict = r.conflicts > 0;
+    var body = '<div class="body"><p class="res">' + esc(r.res) + "</p>" +
+      (r.err ? '<p class="msg">' + esc(r.err) + "</p>" : "") +
+      (hasConflict ? '<div class="banner warn" role="note" style="margin:0 0 10px">' + ic("i-alert", "ic-sm") +
+        '<span class="txt">冲突 1 · 保留双方副本<br><em>' + esc(r.conflictFile) + "</em></span></div>" : "") +
+      treeHTML(r.files.upload, "上传", "i-up") +
+      treeHTML(r.files.download, "下载", "i-down") +
+      treeHTML(r.files.delete, "删除", "i-trash") +
+      (r.failed.length ? '<div class="tree"><div class="h">' + ic("i-alert", "ic-sm") + "未完成的文件 " + r.failed.length +
+        '</div><ul class="fail-list">' + r.failed.map(function (f) { return "<li>" + esc(f) + "</li>"; }).join("") + "</ul></div>" : "") +
+      '<details class="diag"><summary>' + ic("i-chev", "ic-sm chev") + "诊断摘要</summary><pre>" + esc(r.diag) + "</pre></details></div>";
+    return '<details class="rec" data-id="' + r.id + '"><summary>' +
+      '<span class="dot ' + (tone || "idle") + '" aria-hidden="true"></span>' +
+      '<span class="time">' + esc(r.time) + "</span>" +
+      '<span class="pill ' + tone + '">' + esc(REC_LABEL[r.status]) + "</span>" +
+      '<span class="trig">' + esc(r.trig) + "</span>" +
+      '<span class="counts"><i>' + ic("i-up", "ic-sm") + c.upload + "</i><i>" + ic("i-down", "ic-sm") + c.download +
+      "</i><i>" + ic("i-trash", "ic-sm") + c.delete + "</i>" + (hasConflict ? "<i>" + ic("i-flag", "ic-sm") + r.conflicts + "</i>" : "") + "</span>" +
+      '<span class="dur">' + esc(r.secs) + ' 秒 · ' + esc(r.bytes) + "</span>" +
+      ic("i-chev", "ic-sm chev") + "</summary>" + body + "</details>";
+  }
+
+  function historyHTML() {
+    var list = records.filter(function (r) {
+      if (filter === "all") return true;
+      if (filter === "conflict") return r.conflicts > 0;
+      if (filter === "failed") return r.status === "partial" || r.status === "failed";
+      return r.status === filter;
+    });
+    var chips = [["all", "全部"], ["success", "已完成"], ["partial", "部分完成"], ["failed", "失败"],
+      ["unchanged", "没有变化"], ["conflict", "冲突"]].map(function (c) {
+      return '<button type="button" role="tab" data-filter="' + c[0] + '" aria-pressed="' + (filter === c[0]) + '">' + c[1] + "</button>";
+    }).join("");
+    return '<header class="pane-head"><div><h1>同步记录</h1>' +
+      '<p class="sub">仅记录同步时间、统计和文件路径；最多保留最近 100 次。不保存笔记内容。</p></div></header>' +
+      '<div class="chips" role="tablist" aria-label="按结果筛选">' + chips + "</div>" +
+      '<div class="recs">' + (list.length ? list.map(recHTML).join("") : '<p class="empty">没有符合该筛选条件的记录</p>') + "</div>" +
+      '<button type="button" class="ghost" data-act="more" style="margin-top:12px;width:100%;justify-content:center">加载更多记录</button>';
+  }
+
+  /* ---------------- progress engine ---------------- */
+  function tickUI() {
+    var v = Math.round(p.value), ph = phaseInfo();
+    if ($("#pct")) $("#pct").innerHTML = v + "<small>%</small>";
+    if ($("#bar")) $("#bar").style.width = p.value + "%";
+    var bar = $("#bar") && $("#bar").parentElement;
+    if (bar) {
+      bar.setAttribute("aria-valuenow", v);
+      bar.classList.toggle("stopped", !!p.stopped);
+    }
+    if ($("#spd")) $("#spd").textContent = p.running && !p.paused && ph.i === 2
+      ? "↑ 上传 " + (2.1 + Math.random() * 0.7).toFixed(1) + " MB/s · ↓ 下载 " + Math.round(560 + Math.random() * 180) + " KB/s" : "—";
+    if ($("#ela")) $("#ela").textContent = p.elapsed.toFixed(1) + " 秒";
+    if ($("#curPath")) $("#curPath").textContent = p.running && !p.paused ? currentFile() : "—";
+    if ($("#stages")) $("#stages").innerHTML = stagesHTML();
+    if ($("#statsCard")) {
+      $("#statsCard").innerHTML = statsHTML();
+      $("#timingCard").innerHTML = timingHTML();
+      $("#opsCard").innerHTML = "<h3>最近的文件操作</h3>" + opsHTML();
+    }
+    if ($("#progSub")) {
+      var s = svc();
+      $("#progSub").textContent = p.running
+        ? (p.paused ? "已暂停 · 已完成 " + completedItems() + " / " + TOTAL_ITEMS + " 项"
+          : p.value < 30 ? "正在扫描网盘与本地，" + scanStat()
+            : "正在同步 · 已完成 " + completedItems() + " / " + TOTAL_ITEMS + " 项")
+        : p.stopped ? "同步已停止，已完成的文件保留" : "上次同步 " + s.last + " · 已完成";
+    }
+    var badge = $(".navbtn[data-screen=progress] .badge-num");
+    if (badge && p.running) badge.textContent = Math.round(p.value) + "%";
+  }
+
+  function tick() {
+    if (!p.running || p.paused) return;
+    p.elapsed += 0.32;
+    p.value = Math.min(100, p.value + (p.value < 18 ? 2.6 : p.value < 30 ? 2 : p.value < 92 ? 1.8 : 1.4));
+    tickUI();
+    if (p.value >= 100) finish();
+  }
+  function startTimer() {
+    if (timer) clearInterval(timer);
+    timer = setInterval(tick, 320);
+  }
+  function stopTimer() { if (timer) clearInterval(timer); timer = null; }
+
+  function startSync() {
+    if (stateOf() !== "connected") return;
+    services_setState("syncing");
+    p = { running: true, paused: false, value: 0, elapsed: 0, stopped: false, msg: { tone: "ok", icon: "i-activity", title: "同步已开始", text: "计划 " + TOTAL_ITEMS + " 项，预计 " + PLAN_BYTES + "。可以随时暂停或停止。" } };
+    render(); startTimer();
+  }
+  function finish() {
+    stopTimer();
+    services_setState("connected");
+    var s = svc();
+    s.last = "刚刚";
+    records.unshift({ id: Date.now(), time: "刚刚", status: "success", trig: "手动同步",
+      secs: p.elapsed.toFixed(1), bytes: "20.1 MB", counts: { upload: 15, download: 4, delete: 0 }, conflicts: 1,
+      files: { upload: [FILES[0], FILES[1], FILES[2]], download: [FILES[6]], delete: [] }, failed: [],
+      conflictFile: "笔记/日记/2026-10-15 (冲突副本 刚刚).md",
+      res: "成功 19 · 失败 0 · 未执行 0 · 冲突 1（保留双方副本）",
+      diag: '{\n  "status": "success",\n  "plan": { "total": 236, "upload": 15, "download": 4, "delete": 0, "conflicts": 1 },\n  "timingsMs": { "remote": 1400, "local": 600, "planning": 200, "syncing": 6100 }\n}' });
+    p.running = false; p.stopped = false; p.finished = true; p.value = 100;
+    p.msg = { tone: "ok", icon: "i-check", title: "同步完成", text: "成功 19 · 失败 0 · 未执行 0 · 冲突 1（已保留双方副本）。记录已写入同步记录。" };
+    render();
+  }
+  function stopSync() {
+    stopTimer();
+    services_setState("connected");
+    records.unshift({ id: Date.now(), time: "刚刚", status: "cancelled", trig: "手动同步",
+      secs: p.elapsed.toFixed(1), bytes: fmtBytes(Math.round(p.value / 100 * 20.1 * 1048576)),
+      counts: { upload: Math.max(0, Math.round(p.value / 16)), download: p.value > 55 ? 2 : 0, delete: 0 }, conflicts: 0,
+      files: { upload: [FILES[0]], download: [], delete: [] }, failed: [],
+      res: "同步已停止，已完成的文件保留", diag: '{\n  "status": "cancelled",\n  "completed": ' + completedItems() + ",\n  \"unexecuted\": " + (TOTAL_ITEMS - completedItems()) + "\n}" });
+    p.running = false; p.stopped = true; p.paused = false;
+    p.msg = { tone: "warn", icon: "i-stop", title: "同步已停止", text: "已完成的文件保留在两边；未执行 " + (TOTAL_ITEMS - completedItems()) + " 项，可再次“立即同步”继续。" };
+    render();
+  }
+  function togglePause() {
+    p.paused = !p.paused;
+    p.msg = p.paused
+      ? { tone: "warn", icon: "i-pause", title: "已暂停", text: "当前请求完成后暂停，点击“继续”恢复执行本次计划。" }
+      : { tone: "ok", icon: "i-play", title: "已继续", text: "继续执行本次同步计划。" };
+    render();
+  }
+  function services_setState(s) { svc().state = s; syncDemoSelect(); }
+  function syncDemoSelect() { $("#demoState").value = stateOf(); }
+
+  /* ---------------- events ---------------- */
+  $("#pane").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-act]");
+    if (b) {
+      var act = b.getAttribute("data-act");
+      if (act === "start") startSync();
+      else if (act === "pause") togglePause();
+      else if (act === "stop") stopSync();
+      else if (act === "pw") { pwVisible = !pwVisible; render(); }
+      else if (act === "qr") { qrOpen = !qrOpen; render(); }
+      else if (act === "qr-close") { qrOpen = false; render(); }
+      else if (act === "qr-refresh") { render(); }
+      else if (act === "legacy") { advOpen = true; render(); }
+      else if (act === "test") { runTest(b); }
+      else if (act === "more") { alertSmall("演示中仅保留最近 5 条记录。"); }
+      return;
+    }
+    var s = e.target.closest("[data-screen]");
+    if (s) { setScreen(s.getAttribute("data-screen")); return; }
+    var f = e.target.closest("[data-filter]");
+    if (f) { filter = f.getAttribute("data-filter"); renderPane(); }
+  });
+  $("#pane").addEventListener("input", function (e) {
+    if (e.target.id === "f-addr") { svc().host = e.target.value; }
+  });
+  document.addEventListener("change", function (e) {
+    if (e.target.id === "f-onsave" || e.target.id === "f-interval" || e.target.id === "f-conflict") {
+      var b = $("#pane .banner"); if (b) b.style.opacity = 0.6;
+    }
+  });
+  $("#pane").addEventListener("toggle", function (e) {
+    if (e.target.matches("details.adv")) { advOpen = e.target.open; }
+  }, true);
+
+  function runTest(btn) {
+    var addr = $("#f-addr") ? $("#f-addr").value.trim() : "";
+    var wrap = btn.parentElement, dot = wrap.querySelector(".dot");
+    btn.disabled = true; dot.className = "dot warn";
+    btn.dataset.busy = "1";
+    setTimeout(function () {
+      var ok = stateOf() === "connected" || /^https?:\/\//.test(addr);
+      var tone = ok ? "ok" : "err", icon = ok ? "i-check" : "i-alert";
+      var title = ok ? "连接成功" : "连接失败";
+      var text = ok ? "已写入并删除临时文件，可以正常同步。完整路径：" + esc(svc().host.replace(/\/$/, "")) + esc(svc().dir) + "/"
+        : !addr ? "请先填写服务器地址。" : "无法连接上 Webdav 服务器（HTTP 401）。<em>可能是账号或密码错误，也可能是目录没有读写权限。</em>";
+      var banner = $("#pane .card .banner");
+      if (banner) { banner.className = "banner " + tone; banner.innerHTML = ic(icon) + '<span class="txt"><b>' + title + "</b><br>" + text + "</span>"; }
+      dot.className = "dot " + tone;
+      dot.setAttribute("aria-label", title);
+      btn.disabled = false;
+      if (!ok) { toast("测试未通过，连接信息已保留"); }
+    }, 1200);
+  }
+  function toast(msg) {
+    var t = document.createElement("div");
+    t.className = "pill err";
+    t.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:22px;z-index:40;box-shadow:var(--shadow);padding:6px 12px";
+    t.textContent = msg;
+    document.body.append(t);
+    setTimeout(function () { t.remove(); }, 2400);
+  }
+  function alertSmall(msg) { toast(msg); }
+
+  function setScreen(id) {
+    screen = id;
+    render();
+    $("#pane").focus({ preventScroll: true });
+  }
+
+  document.addEventListener("click", function (e) {
+    var sv = e.target.closest("[data-service]");
+    if (sv) {
+      var id = sv.getAttribute("data-service");
+      if (id !== cur) {
+        cur = id; qrOpen = false; pwVisible = false; stopTimer();
+        p = { running: false, paused: false, value: 0, elapsed: 0, stopped: false, msg: "" };
+        render();
+      }
+      return;
+    }
+    if (e.target.closest("[data-more]")) {
+      advOpen = true; cur = "webdav"; setScreen("home");
+      toast("原有配置服务（Dropbox · OneDrive · S3）已展开在高级设置中");
+      return;
+    }
+    var nav = e.target.closest(".rail [data-screen], .rail-foot [data-act], #pane [data-screen]");
+    if (nav && !$("#pane").contains(nav) && !nav.closest(".rail-foot")) {
+      setScreen(nav.getAttribute("data-screen"));
+    }
+    var act = e.target.closest(".rail-foot [data-act]");
+    if (act) {
+      var a = act.getAttribute("data-act");
+      if (a === "start") startSync(); else if (a === "pause") togglePause(); else if (a === "stop") stopSync();
+    }
+  });
+
+  $("#demoState").addEventListener("change", function (e) {
+    var v = e.target.value;
+    stopTimer();
+    if (v === "syncing") {
+      svc().state = "connected";
+      p = { running: false, paused: false, value: 0, elapsed: 0, stopped: false, msg: "" };
+      render(); startSync();
+      if (screen !== "progress") setScreen("progress");
+      return;
+    }
+    svc().state = v;
+    p = { running: false, paused: false, value: 0, elapsed: 0, stopped: false, msg: "" };
+    render();
+  });
+
+  function setTheme(t) {
+    document.documentElement.dataset.theme = t;
+    $("#themeLight").setAttribute("aria-pressed", String(t === "light"));
+    $("#themeDark").setAttribute("aria-pressed", String(t === "dark"));
+  }
+  $("#themeLight").onclick = function () { setTheme("light"); };
+  $("#themeDark").onclick = function () { setTheme("dark"); };
+
+  var notesToggle = $("#notesToggle");
+  notesToggle.onclick = function () {
+    var open = $("#notesPanel").hidden;
+    $("#notesPanel").hidden = !open;
+    notesToggle.setAttribute("aria-expanded", String(open));
+  };
+
+  /* ---------------- boot ---------------- */
+  render();
+})();
+</script>
+</body>
+</html>
