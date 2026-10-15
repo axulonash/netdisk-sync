@@ -232,6 +232,7 @@ import { getQuarkPluginTransport } from "./native/quarkService";
 import { QuarkError } from "./native/quarkTransport";
 import { ActivityTracker, listActivities, saveActivity, safeSyncError, syncSettingsFingerprint, webdavScope, type SyncActivity } from "./syncActivity";
 import { progressStatus } from "./syncProgressUi";
+import { createSyncNotice } from "./syncNoticeUi";
 import { closeNativeConnections } from "./native/httpsPool";
 import { SyncProtectionError, SyncScopeError } from "./syncProtection";
 import { SyncProtectionModal } from "./syncProtectionModal";
@@ -1390,6 +1391,9 @@ export default class RemotelySavePlugin extends Plugin {
         }, 1000 * 30)
       );
     }
+
+    const syncNotice = createSyncNotice(this);
+    this.register(() => syncNotice.destroy());
 
     this.addCommand({
       id: "start-sync",
