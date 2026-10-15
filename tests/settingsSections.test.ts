@@ -249,6 +249,23 @@ describe("renderAdvancedSection", () => {
     assert.equal(select.value, "enable");
   });
 
+  it("clears the enabled notice when the config dir is disabled again", async () => {
+    const f = advancedFixture();
+    const row = f.rowFor("settings_configdir")!;
+    const select = row.querySelector("select") as HTMLSelectElement;
+    select.value = "enable";
+    select.dispatchEvent(new f.dom.window.Event("change"));
+    f.buttonIn(row, "modal_syncconfig_secondconfirm")!.click();
+    await tick();
+    assert.ok(row.textContent!.includes("modal_syncconfig_notice"));
+    select.value = "disable";
+    select.dispatchEvent(new f.dom.window.Event("change"));
+    await tick();
+    assert.equal(f.plugin.settings.syncConfigDir, false);
+    assert.deepEqual(f.calls, ["save", "save"]);
+    assert.ok(!row.textContent!.includes("modal_syncconfig_notice"));
+  });
+
   it("keeps only one inline editor open across basic and advanced sections", async () => {
     const dom = new JSDOM("<div id='basic'></div><div id='adv'></div>");
     const basic = dom.window.document.getElementById("basic")!;

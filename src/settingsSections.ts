@@ -391,6 +391,7 @@ export function renderAdvancedSection(
     } else {
       secondConfirm = false;
       plugin.settings.syncConfigDir = false;
+      configRow.inline.replaceChildren();
       void plugin.saveSettings();
     }
   };
