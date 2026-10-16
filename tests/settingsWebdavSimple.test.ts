@@ -96,6 +96,22 @@ describe("WebDAV connection fragment", () => {
     f.cleanup();
   });
 
+  it("links a described field to its hint via aria-describedby", () => {
+    const f = fixture();
+    const label = Array.from(f.parent.querySelectorAll("label")).find(
+      (n) => n.textContent === "同步目录"
+    )!;
+    const directory = f.dom.window.document.getElementById(
+      label.htmlFor
+    ) as HTMLInputElement;
+    const describedBy = directory.getAttribute("aria-describedby");
+    assert.ok(describedBy);
+    const hint = f.dom.window.document.getElementById(describedBy!);
+    assert.ok(hint, "aria-describedby must point at the hint element");
+    assert.ok(hint!.textContent!.includes("自动追加当前笔记本名称"));
+    f.cleanup();
+  });
+
   it("invalidates immediately and persists edits before testing, keeping password whitespace", async () => {
     const f = fixture();
     const password = f.parent.querySelector(

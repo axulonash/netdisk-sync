@@ -63,7 +63,12 @@ export function renderWebdavConnection(
     control.id = controlId;
     label.htmlFor = controlId;
     box.append(label, control);
-    if (description) box.append(el("small", description));
+    if (description) {
+      const hint = el("small", description);
+      hint.id = `${controlId}-hint`;
+      control.setAttribute("aria-describedby", hint.id);
+      box.append(hint);
+    }
     root.append(box);
   };
 
