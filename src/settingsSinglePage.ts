@@ -9,6 +9,7 @@ import {
   renderImportExportSection,
 } from "./settingsSections";
 import { renderWebdavConnection } from "./settingsWebdavSimple";
+import { renderBaiduConnection } from "./settingsBaiduQr";
 
 /** Services the single page knows how to render a connection for. */
 const NATIVE_SERVICES: SUPPORTED_SERVICES_TYPE[] = [
@@ -63,6 +64,15 @@ export function renderSettingsSinglePage(
     if (plugin.settings.serviceType === "webdav") {
       cleanups.push(
         renderWebdavConnection(frame.sections.connection, plugin, {
+          desktop,
+          redisplay,
+          setStatus: frame.setStatus,
+          setTester: frame.setTester,
+        })
+      );
+    } else if (plugin.settings.serviceType === "baidu") {
+      cleanups.push(
+        renderBaiduConnection(frame.sections.connection, plugin, {
           desktop,
           redisplay,
           setStatus: frame.setStatus,

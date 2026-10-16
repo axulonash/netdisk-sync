@@ -1,5 +1,3 @@
-import {renderBaiduQrTest} from './settingsBaiduQr';
-import {BaiduQrLoginModal,verifyBaiduQrSession} from './native/settingsBaiduQr';
 import { renderSimpleAliyun } from "./settingsAliyunSimple";
 import { AliyunLoginModal } from "./native/settingsAliyun";
 import { AliyunClient } from "./native/aliyunClient";
@@ -830,15 +828,8 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
   display(): void {
     this.simpleCleanup?.();
     this.containerEl.empty();
-    if(this.plugin.settings.serviceType === "webdav") {
+    if(this.plugin.settings.serviceType === "webdav" || this.plugin.settings.serviceType === "baidu") {
       this.simpleCleanup=renderSettingsSinglePage(this.containerEl,this.plugin,Platform.isDesktopApp);
-      return;
-    }
-    if(this.plugin.settings.serviceType === "baidu") {
-      this.simpleCleanup=renderBaiduQrTest(this.containerEl,this.plugin,{
-        openLogin:done=>{const modal=new BaiduQrLoginModal(this.plugin,done);modal.open();return ()=>modal.close();},
-        verify:root=>verifyBaiduQrSession(this.plugin,root)
-      },Platform.isDesktopApp,()=>this.display());
       return;
     }
     if(this.plugin.settings.serviceType === "aliyun") {
