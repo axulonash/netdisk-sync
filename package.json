@@ -1,6 +1,6 @@
 {
   "name": "remotely-save-next",
-  "version": "0.1.51",
+  "version": "0.2.0",
   "engines": {
     "node": ">=22.13.0"
   },

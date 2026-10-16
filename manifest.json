@@ -1,7 +1,7 @@
 {
   "id": "remotely-save-next",
   "name": "remotely-save-next",
-  "version": "0.1.51",
+  "version": "0.2.0",
   "minAppVersion": "0.13.21",
   "description": "面向国内环境的 Obsidian 同步插件，支持 WebDAV、百度网盘、夸克网盘和阿里云盘。基于 Remotely Save 改进。",
   "author": "remotely-save-next contributors",
