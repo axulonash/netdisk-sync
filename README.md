@@ -4,6 +4,8 @@ An independently maintained Obsidian sync plugin focused on domestic Chinese env
 
 Based on [Remotely Save](https://github.com/remotely-save/remotely-save), originally developed by fyears and contributors. Original attribution and licenses are retained; see [UPSTREAM.md](UPSTREAM.md).
 
+Original author fyears and the Remotely Save contributors are credited as contributors to this project.
+
 Version `0.1.26` is experimental. Real-account and Obsidian GUI acceptance testing is pending. This project has not been published to the community plugin directory.
 
 See the [Chinese README](README.zh-cn.md), [current implementation status](docs/diagnostics/current-status.zh-cn.md), and [local installation and debugging](docs/how_to_debug/local-development.zh-cn.md).

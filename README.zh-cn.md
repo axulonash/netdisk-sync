@@ -4,6 +4,8 @@
 
 这是独立维护的改进项目，基于 fyears 等贡献者的 [Remotely Save](https://github.com/remotely-save/remotely-save) 开发。原项目与本项目的关系及许可证见 [来源说明](UPSTREAM.md)。
 
+原作者 fyears 及 Remotely Save 贡献者在本项目中列为贡献者。
+
 ## 当前状态
 
 当前版本 `0.1.26` 为实验版本，尚未完成真实账号和 Obsidian 内完整验收，尚未发布到社区插件目录。

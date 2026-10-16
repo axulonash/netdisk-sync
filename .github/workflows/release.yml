@@ -13,28 +13,12 @@ on:
     tags:
       - "*" # Push events to matching any tag format, i.e. 1.0, 20.15.10
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
-
-    environment: env-for-buildci
-
-    env:
-      DROPBOX_APP_KEY: ${{secrets.DROPBOX_APP_KEY}}
-      ONEDRIVE_CLIENT_ID: ${{secrets.ONEDRIVE_CLIENT_ID}}
-      ONEDRIVE_AUTHORITY: ${{secrets.ONEDRIVE_AUTHORITY}}
-      REMOTELYSAVE_WEBSITE: ${{secrets.REMOTELYSAVE_WEBSITE}}
-      REMOTELYSAVE_CLIENT_ID: ${{secrets.REMOTELYSAVE_CLIENT_ID}}
-      GOOGLEDRIVE_CLIENT_ID: ${{secrets.GOOGLEDRIVE_CLIENT_ID}}
-      GOOGLEDRIVE_CLIENT_SECRET: ${{secrets.GOOGLEDRIVE_CLIENT_SECRET}}
-      BOX_CLIENT_ID: ${{secrets.BOX_CLIENT_ID}}
-      BOX_CLIENT_SECRET: ${{secrets.BOX_CLIENT_SECRET}}
-      PCLOUD_CLIENT_ID: ${{secrets.PCLOUD_CLIENT_ID}}
-      PCLOUD_CLIENT_SECRET: ${{secrets.PCLOUD_CLIENT_SECRET}}
-      YANDEXDISK_CLIENT_ID: ${{secrets.YANDEXDISK_CLIENT_ID}}
-      YANDEXDISK_CLIENT_SECRET: ${{secrets.YANDEXDISK_CLIENT_SECRET}}
-      KOOFR_CLIENT_ID: ${{secrets.KOOFR_CLIENT_ID}}
-      KOOFR_CLIENT_SECRET: ${{secrets.KOOFR_CLIENT_SECRET}}
 
     steps:
       - name: Checkout codes
@@ -57,8 +41,18 @@ jobs:
         with:
           node-version-file: .nvmrc
       - run: npm ci --ignore-scripts
-      - run: npm run test:baseline
+      - run: npm test
       - run: npm run build
+      - name: Guard tag matches manifest.json version
+        # the release tag must exactly equal manifest.json's version (no "v" prefix)
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="$(node -p "require('./manifest.json').version")"
+          echo "tag=$TAG manifest.version=$VERSION"
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "::error::Pushed tag '$TAG' does not match manifest.json version '$VERSION'"
+            exit 1
+          fi
       - name: Create Release And Upload
         uses: softprops/action-gh-release@v2
         with:
