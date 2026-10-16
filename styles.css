@@ -49,16 +49,19 @@
 /* Simplified single-page settings: native Obsidian colors and controls. */
 .rsnext-settings { max-width:720px; margin:0 auto; container-type:inline-size; }
 .rsnext-header { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-.rsnext-header h2 { margin:0; }
 .rsnext-header > button { margin-inline-start:auto; }
 .rsnext-connection-text { color:var(--text-muted); font-size:var(--font-ui-small); }
 .rsnext-service-warning { color:var(--text-error); font-size:var(--font-ui-small); margin:8px 0 0; }
 .rsnext-status { color:var(--text-muted); font-size:var(--font-ui-small); margin:8px 0 16px; }
-/* Frame progress row: status left, sync button right; the panel spans both columns.
-   The only unstyled direct div of the frame besides the header. */
+/* Frame progress row. Child order: status, panel, sync(mod-cta), stop(always in DOM,
+   disabled when idle). Idle: status|sync. Syncing: status|sync / panel / stop. The
+   only unstyled direct div of the frame besides the header. */
 .rsnext-settings > div:not(.rsnext-header) { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:8px 12px; margin:8px 0 16px; }
-.rsnext-settings > div:not(.rsnext-header) > .rsnext-status { margin:0; }
-.rsnext-settings > div:not(.rsnext-header) > .rsnext-sync-progress { grid-column:1 / -1; }
+.rsnext-settings > div:not(.rsnext-header) > .rsnext-status { grid-column:1; grid-row:1; margin:0; }
+.rsnext-settings > div:not(.rsnext-header) > button.mod-cta { grid-column:2; grid-row:1; }
+.rsnext-settings > div:not(.rsnext-header) > .rsnext-sync-progress { grid-column:1 / -1; grid-row:2; }
+.rsnext-settings > div:not(.rsnext-header) > button[data-action="stop"] { grid-row:3; justify-self:start; }
+.rsnext-settings > div:not(.rsnext-header) > button[data-action="stop"]:disabled { display:none; }
 
 .rsnext-row { display:grid; grid-template-columns:180px minmax(0,1fr); gap:8px 16px; align-items:center; margin:16px 0; }
 .rsnext-row input:not([type="checkbox"]), .rsnext-row select { width:100%; min-width:0; }
