@@ -820,11 +820,11 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
   display(): void {
     this.simpleCleanup?.();
     this.containerEl.empty();
-    if(this.plugin.settings.serviceType === "webdav" || this.plugin.settings.serviceType === "baidu" || this.plugin.settings.serviceType === "quark" || this.plugin.settings.serviceType === "aliyun") {
-      this.simpleCleanup=renderSettingsSinglePage(this.containerEl,this.plugin,Platform.isDesktopApp);
-      return;
-    }
-    this.renderLegacy(this.containerEl);
+    this.simpleCleanup = renderSettingsSinglePage(
+      this.containerEl,
+      this.plugin,
+      Platform.isDesktopApp
+    );
   }
   private renderLegacy(containerEl: HTMLElement, advancedOnly=false): void {
     containerEl.style.setProperty("overflow-wrap", "break-word");
