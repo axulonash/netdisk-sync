@@ -8,200 +8,11 @@
   font-weight: bold;
 }
 
-.encryptionmethod-second-confirm {
-  font-weight: bold;
-}
-
-.settings-auth-related {
-  border-top: 1px solid var(--background-modifier-border);
-  padding-top: 18px;
-}
-
 .settings-percentage-custom-hide {
   display: none;
 }
 
 .settings-encryption-method-hide {
-  display: none;
-}
-
-.s3-disclaimer {
-  font-weight: bold;
-}
-.s3-hide {
-  display: none;
-}
-
-.dropbox-disclaimer {
-  font-weight: bold;
-}
-.dropbox-hide {
-  display: none;
-}
-
-.dropbox-auth-button-hide {
-  display: none;
-}
-
-.dropbox-revoke-auth-button-hide {
-  display: none;
-}
-
-.onedrive-disclaimer {
-  font-weight: bold;
-}
-.onedrive-hide {
-  display: none;
-}
-
-.onedrive-auth-button-hide {
-  display: none;
-}
-
-.onedrive-revoke-auth-button-hide {
-  display: none;
-}
-
-.onedrivefull-allow-to-use-hide {
-  display: none;
-}
-
-.onedrivefull-disclaimer {
-  font-weight: bold;
-}
-.onedrivefull-hide {
-  display: none;
-}
-
-.onedrivefull-auth-button-hide {
-  display: none;
-}
-
-.onedrivefull-revoke-auth-button-hide {
-  display: none;
-}
-
-.webdav-disclaimer {
-  font-weight: bold;
-}
-.webdav-hide {
-  display: none;
-}
-
-.webdav-customheaders-textarea {
-  font-family: monospace;
-}
-
-.webdis-disclaimer {
-  font-weight: bold;
-}
-.webdis-hide {
-  display: none;
-}
-
-.googledrive-disclaimer {
-  font-weight: bold;
-}
-.googledrive-hide {
-  display: none;
-}
-
-.googledrive-allow-to-use-hide {
-  display: none;
-}
-
-.googledrive-auth-button-hide {
-  display: none;
-}
-
-.googledrive-revoke-auth-button-hide {
-  display: none;
-}
-
-.box-disclaimer {
-  font-weight: bold;
-}
-.box-hide {
-  display: none;
-}
-
-.box-allow-to-use-hide {
-  display: none;
-}
-
-.box-auth-button-hide {
-  display: none;
-}
-
-.box-revoke-auth-button-hide {
-  display: none;
-}
-
-.pcloud-disclaimer {
-  font-weight: bold;
-}
-.pcloud-hide {
-  display: none;
-}
-
-.pcloud-allow-to-use-hide {
-  display: none;
-}
-
-.pcloud-auth-button-hide {
-  display: none;
-}
-
-.pcloud-revoke-auth-button-hide {
-  display: none;
-}
-
-.yandexdisk-disclaimer {
-  font-weight: bold;
-}
-.yandexdisk-hide {
-  display: none;
-}
-
-.yandexdisk-allow-to-use-hide {
-  display: none;
-}
-
-.yandexdisk-auth-button-hide {
-  display: none;
-}
-
-.yandexdisk-revoke-auth-button-hide {
-  display: none;
-}
-
-.koofr-disclaimer {
-  font-weight: bold;
-}
-.koofr-hide {
-  display: none;
-}
-
-.koofr-allow-to-use-hide {
-  display: none;
-}
-
-.koofr-auth-button-hide {
-  display: none;
-}
-
-.koofr-revoke-auth-button-hide {
-  display: none;
-}
-
-.azureblobstorage-disclaimer {
-  font-weight: bold;
-}
-.azureblobstorage-hide {
-  display: none;
-}
-
-.azureblobstorage-allow-to-use-hide {
   display: none;
 }
 
@@ -216,31 +27,6 @@
 
 .onlyallowpaths-textarea {
   font-family: monospace;
-}
-
-.logtohttpserver-warning {
-  color: red;
-  font-weight: bolder;
-}
-
-.setting-need-wrapping .setting-item-control {
-  /* flex-wrap: wrap; */
-  display: grid;
-}
-
-.pro-disclaimer {
-  font-weight: bold;
-}
-.pro-hide {
-  display: none;
-}
-
-.pro-auth-button-hide {
-  display: none;
-}
-
-.pro-revoke-auth-button-hide {
-  display: none;
 }
 
 .remotely-save-next-settings-section {
@@ -260,26 +46,42 @@
   outline-offset: 2px;
 }
 
-/* Simplified WebDAV settings: native Obsidian colors and controls. */
+/* Simplified single-page settings: native Obsidian colors and controls. */
 .rsnext-settings { max-width:720px; margin:0 auto; container-type:inline-size; }
-.rsnext-header { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.rsnext-header { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .rsnext-header h2 { margin:0; }
-.rsnext-status { color:var(--text-muted); margin:12px 0 24px; }
-.rsnext-tabs { display:flex; gap:8px; border-bottom:1px solid var(--background-modifier-border); margin-bottom:24px; padding-bottom:8px; }
-.rsnext-tabs button[aria-selected="true"] { color:var(--text-accent); box-shadow:inset 0 -2px var(--interactive-accent); }
+.rsnext-header > button { margin-inline-start:auto; }
+.rsnext-connection-text { color:var(--text-muted); font-size:var(--font-ui-small); }
+.rsnext-service-warning { color:var(--text-error); font-size:var(--font-ui-small); margin:8px 0 0; }
+.rsnext-status { color:var(--text-muted); font-size:var(--font-ui-small); margin:8px 0 16px; }
+/* Frame progress row: status left, sync button right; the panel spans both columns.
+   The only unstyled direct div of the frame besides the header. */
+.rsnext-settings > div:not(.rsnext-header) { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:8px 12px; margin:8px 0 16px; }
+.rsnext-settings > div:not(.rsnext-header) > .rsnext-status { margin:0; }
+.rsnext-settings > div:not(.rsnext-header) > .rsnext-sync-progress { grid-column:1 / -1; }
+
 .rsnext-row { display:grid; grid-template-columns:180px minmax(0,1fr); gap:8px 16px; align-items:center; margin:16px 0; }
 .rsnext-row input:not([type="checkbox"]), .rsnext-row select { width:100%; min-width:0; }
 .rsnext-row small { grid-column:2; color:var(--text-muted); }
+.rsnext-control { min-width:0; }
+
+/* Inline editor opened by an edit button (password / encryption / config-dir / export). */
+.rsnext-inline { display:flex; flex-direction:column; align-items:flex-start; gap:8px; }
+.rsnext-inline > input { align-self:stretch; }
+.rsnext-inline-notice { color:var(--text-muted); font-size:var(--font-ui-small); margin:8px 0; padding:8px 12px; border-inline-start:2px solid var(--background-modifier-border); }
+.rsnext-eye { display:inline-flex; align-items:center; justify-content:center; padding:4px; border:0; background:transparent; box-shadow:none; color:var(--text-muted); cursor:pointer; }
+.rsnext-eye:hover { color:var(--text-normal); background:var(--background-modifier-hover); }
 
 .rsnext-target { overflow-wrap:anywhere; color:var(--text-muted); font-size:var(--font-smallest); }
 .rsnext-hint { color:var(--text-muted); font-size:var(--font-small); margin:24px 0; }
-.rsnext-advanced, .rsnext-record { border-top:1px solid var(--background-modifier-border); padding:16px 0; }
+.rsnext-buttons { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.rsnext-buttons input { flex:1 1 220px; min-width:0; }
+.rsnext-record { border-top:1px solid var(--background-modifier-border); padding:16px 0; }
 .rsnext-settings summary { cursor:pointer; line-height:1.6; }
 .rsnext-settings fieldset { border:0; padding:0; margin:16px 0 0; min-width:0; }
 .rsnext-record li { overflow-wrap:anywhere; }
 .rsnext-settings button:focus-visible, .rsnext-settings summary:focus-visible { outline:2px solid var(--interactive-accent); outline-offset:3px; }
 @container (max-width:480px) { .rsnext-row { grid-template-columns:1fr; }.rsnext-row small { grid-column:1; }.rsnext-header { align-items:flex-start; flex-wrap:wrap; } }
-.rsnext-test-hint { display:block; margin:8px 0; color:var(--text-muted); }
 .rsnext-path-tree, .rsnext-path-tree ul { list-style:none; padding-left:16px; }
 .rsnext-address-control { display:flex; align-items:center; gap:8px; min-width:0; }
 .rsnext-address-control input { flex:1; }
@@ -294,32 +96,11 @@
 .rsnext-password-control .rsnext-password-toggle { position:absolute; inset-inline-end:4px; top:50%; transform:translateY(-50%); display:flex; align-items:center; justify-content:center; width:28px; height:28px; padding:0; border:0; background:transparent; box-shadow:none; color:var(--text-muted); }
 .rsnext-password-control .rsnext-password-toggle:hover { color:var(--text-normal); background:var(--background-modifier-hover); }
 .rsnext-connection-divider { border:0; border-top:1px solid var(--background-modifier-border); margin:16px 0 24px; }
-.rsnext-auth-status:empty { display:none; }
-.rsnext-advanced a[data-action="authorization-link"], .rsnext-advanced a[href="https://pan.baidu.com/union"] { display:block; margin:8px 0; }
-.rsnext-advanced a[hidden] { display:none; }
-/* Guided Baidu setup: ordered steps, nearby feedback, desktop handoff. */
-.rsnext-setup-intro { color:var(--text-muted); margin:12px 0 24px; }
-.rsnext-setup-step { padding:20px; margin:16px 0; border:1px solid var(--background-modifier-border); border-radius:var(--radius-m,8px); }
-.rsnext-setup-step[data-state="current"] { border-color:var(--interactive-accent); }
-.rsnext-step-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; }
-.rsnext-step-head h3 { margin:0; }
-.rsnext-step-badge { color:var(--text-muted); font-size:var(--font-small); }
-.rsnext-step-help { color:var(--text-muted); line-height:1.6; margin:12px 0; }
-.rsnext-step-feedback { line-height:1.6; margin:12px 0; }
-.rsnext-step-feedback[data-state="failure"] { color:var(--text-error); }
-.rsnext-diagnostics p { overflow-wrap:anywhere; font-size:var(--font-small); color:var(--text-muted); }
-.rsnext-mobile-guide { padding:20px; margin:16px 0; border:1px solid var(--background-modifier-border); border-radius:var(--radius-m,8px); background:var(--background-secondary); line-height:1.7; }
-.rsnext-mobile-guide h3 { margin-top:0; }
-.rsnext-setup-step[hidden] { display:none; }
-@container (max-width:480px) { .rsnext-setup-step { padding:16px; }.rsnext-setup-step .rsnext-address-control { flex-wrap:wrap; }.rsnext-setup-step .rsnext-address-control input { flex-basis:100%; } }
 
-.rsnext-service-picker { display:flex; flex-wrap:wrap; gap:8px; border:0; padding:0; margin:0 0 24px; min-width:0; }
-.rsnext-service-picker legend { font-weight:600; margin-bottom:12px; }
-.rsnext-service-picker label { display:flex; align-items:center; gap:8px; min-height:44px; padding:8px 16px; border:1px solid var(--background-modifier-border); border-radius:var(--radius-m,8px); cursor:pointer; background:var(--background-secondary); }
-.rsnext-service-picker label:has(input:checked) { border-color:var(--interactive-accent); background:var(--background-modifier-hover); }
-.rsnext-service-picker label:has(input:focus-visible) { outline:2px solid var(--interactive-accent); outline-offset:2px; }
-.rsnext-service-picker:disabled label { cursor:default; opacity:0.6; }
-/* One shared progress panel for the four simplified service pages. */
+/* Floating top-right sync notice; mirrors the inline defaults using theme variables. */
+.rsnext-sync-notice { position:fixed; top:12px; right:12px; z-index:9999; padding:8px 12px; border-radius:var(--radius-m); background:var(--background-secondary); color:var(--text-normal); box-shadow:var(--shadow-s); font-size:var(--font-ui-small); }
+
+/* One shared progress panel for the simplified service pages. */
 .rsnext-sync-progress {
   margin: 12px 0;
   padding: 12px;
