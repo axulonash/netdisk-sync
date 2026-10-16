@@ -10,6 +10,7 @@ import {
 } from "./settingsSections";
 import { renderWebdavConnection } from "./settingsWebdavSimple";
 import { renderBaiduConnection } from "./settingsBaiduQr";
+import { renderQuarkConnection } from "./settingsQuarkSimple";
 
 /** Services the single page knows how to render a connection for. */
 const NATIVE_SERVICES: SUPPORTED_SERVICES_TYPE[] = [
@@ -73,6 +74,15 @@ export function renderSettingsSinglePage(
     } else if (plugin.settings.serviceType === "baidu") {
       cleanups.push(
         renderBaiduConnection(frame.sections.connection, plugin, {
+          desktop,
+          redisplay,
+          setStatus: frame.setStatus,
+          setTester: frame.setTester,
+        })
+      );
+    } else if (plugin.settings.serviceType === "quark") {
+      cleanups.push(
+        renderQuarkConnection(frame.sections.connection, plugin, {
           desktop,
           redisplay,
           setStatus: frame.setStatus,

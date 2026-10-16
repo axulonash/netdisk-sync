@@ -1,28 +1,56 @@
-import { createSyncControls } from "./syncControlsUi";
-import { createSyncProgress, appendProgressResult } from "./syncProgressUi";
 import type RemotelySavePlugin from "./main";
-import { createServicePicker } from "./settingsServicePicker";
+import type { ConnectionState } from "./settingsFrame";
 import {
   quarkRoot,
   quarkOverwriteBinding,
   type QuarkConfig,
 } from "./native/quarkAuth";
-import type { SyncActivity } from "./syncActivity";
-import {
-  QUARK_SAFE_SERVER_CODES,
-} from "./native/quarkTransport";
-export interface QuarkSetupActions {
-  openLogin(done: () => void): () => void;
-  prepare(config: QuarkConfig, guard: () => void): Promise<QuarkConfig>;
-}
-export function renderSimpleQuark(
+import { QUARK_SAFE_SERVER_CODES } from "./native/quarkTransport";
+
+type QuarkNative = typeof import("./native/settingsQuark");
+// The QR block/module imports obsidian at load; require it lazily so the
+// fragment (and settingsSinglePage) stay loadable in tests without the runtime.
+const loadQuarkNative = (): QuarkNative | undefined => {
+  try {
+    return require("./native/settingsQuark") as QuarkNative;
+  } catch {
+    return undefined;
+  }
+};
+
+type QuarkPrepare = {
+  QuarkClient: typeof import("./native/quarkClient").QuarkClient;
+  getQuarkPluginTransport: typeof import("./native/quarkService").getQuarkPluginTransport;
+};
+// quarkService imports obsidian at load; quarkClient is loaded alongside so the
+// prepare path can run without the obsidian runtime.
+const loadQuarkPrepare = (): QuarkPrepare | undefined => {
+  try {
+    return {
+      QuarkClient: require("./native/quarkClient").QuarkClient,
+      getQuarkPluginTransport: require("./native/quarkService")
+        .getQuarkPluginTransport,
+    };
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * "连接" fragment for the Quark single page: after login the QR renders inline
+ * in this section (no modal), the 同步文件夹 editor verifies read/write, and the
+ * frame's 测试连接 button runs that same preparation through ctx.setTester.
+ */
+export function renderQuarkConnection(
   parent: HTMLElement,
   plugin: RemotelySavePlugin,
-  actions: QuarkSetupActions,
-  advanced: (parent: HTMLElement) => void,
-  redisplay: () => void,
-  desktop: boolean
-) {
+  ctx: {
+    desktop: boolean;
+    redisplay: () => void;
+    setStatus(s: ConnectionState, text: string): void;
+    setTester(t: (() => Promise<{ ok: boolean; message: string }>) | null): void;
+  }
+): () => void {
   const doc = parent.ownerDocument;
   const el = <K extends keyof HTMLElementTagNameMap>(
     tag: K,
@@ -34,182 +62,259 @@ export function renderSimpleQuark(
     node.className = cls;
     return node;
   };
-  const root = el("div", "", "rsnext-settings");
+  const root = el("div");
   parent.append(root);
-  const service = createServicePicker(
-    doc,
-    "quark",
-    plugin.settings.legacyServiceType
-  );
-  root.append(service);
-  root.append(el("h2", "remotely-save-next"));
-  const tabs = el("div", "", "rsnext-tabs"),
-    settingsTab = el("button", "同步设置"),
-    historyTab = el("button", "同步记录");
-  tabs.setAttribute("role", "tablist");
-  tabs.setAttribute("aria-label", "夸克同步管理");
-  tabs.append(settingsTab, historyTab);
-  root.append(tabs);
-  const settings = el("div"),
-    history = el("div");
-  root.append(settings, history);
-  const uid = `rsnext-quark-${Math.random().toString(36).slice(2)}`;
-  [settingsTab, historyTab].forEach((tab, i) => {
-    tab.id = `${uid}-tab-${i}`;
-    tab.setAttribute("role", "tab");
-    tab.setAttribute("aria-controls", `${uid}-panel-${i}`);
-    const panel = i ? history : settings;
-    panel.id = `${uid}-panel-${i}`;
-    panel.setAttribute("role", "tabpanel");
-    panel.setAttribute("aria-labelledby", tab.id);
-  });
-  const guide = el("section", "", "rsnext-mobile-guide");
-  guide.hidden = desktop;
-  guide.append(
-    el("h3", "请到电脑完成设置"),
-    el(
-      "p",
-      "当前版本手机端暂不支持夸克同步。请在电脑端 Obsidian 打开对应笔记库，进入设置 → remotely-save-next → 夸克网盘，扫码登录、准备同步文件夹，再开始同步。"
-    )
-  );
-  guide.setAttribute("role", "note");
-  settings.append(guide);
-  const steps = ["1. 登录夸克网盘", "2. 选择同步文件夹", "3. 开始同步"].map(
-    (title) => {
-      const section = el("section", "", "rsnext-setup-step"),
-        head = el("div", "", "rsnext-step-head"),
-        badge = el("span", "", "rsnext-step-badge");
-      head.append(el("h3", title), badge);
-      section.append(head);
-      section.hidden = !desktop;
-      settings.append(section);
-      return { section, badge };
-    }
-  );
-  const row = (title: string, control: HTMLElement, target: HTMLElement) => {
-    const box = el("div", "", "rsnext-row"),
-      label = el("label", title);
-    control.id = `${uid}-${Math.random().toString(36).slice(2)}`;
-    label.htmlFor = control.id;
-    box.append(label, control);
-    target.append(box);
-    return box;
+  let disposed = false;
+  let qrActive = false;
+  let verifyBusy = false;
+  let closeLogin: (() => void) | undefined;
+  let outcome: { state: ConnectionState; text: string } = {
+    state: "idle",
+    text: plugin.settings.quarkNative?.session
+      ? "请先准备同步文件夹。"
+      : "请先扫码登录。",
   };
-  const account = el("div", "", "rsnext-address-control"),
-    accountText = el("span"),
-    login = el("button", "扫码登录"),
-    logout = el("button", "退出登录");
+
+  if (!ctx.desktop) {
+    root.append(
+      el(
+        "p",
+        "当前版本手机端暂不支持夸克同步。请在电脑端 Obsidian 打开对应笔记库，进入设置 → remotely-save-next → 夸克网盘，扫码登录、准备同步文件夹，再开始同步。"
+      )
+    );
+    ctx.setTester(null);
+    ctx.setStatus("idle", "请在电脑端使用");
+    return () => {
+      disposed = true;
+      root.remove();
+    };
+  }
+
+  const id = `rsnext-quark-${Math.random().toString(36).slice(2)}`;
+  let fieldId = 0;
+  const row = (name: string, control: HTMLElement, description?: string) => {
+    const box = el("div", "", "rsnext-row");
+    const label = el("label", name);
+    const controlId = `${id}-field${fieldId++}`;
+    control.id = controlId;
+    label.htmlFor = controlId;
+    box.append(label, control);
+    if (description) {
+      const hint = el("small", description);
+      hint.id = `${controlId}-hint`;
+      control.setAttribute("aria-describedby", hint.id);
+      box.append(hint);
+    }
+    root.append(box);
+  };
+
+  const account = el("div", "", "rsnext-address-control");
+  const accountText = el("span");
+  const login = el("button", "扫码登录", "mod-cta");
+  login.type = "button";
   login.dataset.action = "login";
-  account.append(accountText, login, logout);
-  row("登录状态", account, steps[0].section);
-  steps[0].section.append(
-    el(
-      "p",
-      "使用手机夸克 App 扫描电脑上显示的二维码，确认后会自动完成登录。无需填写应用密钥。",
-      "rsnext-step-help"
-    )
+  const logout = el("button", "退出登录");
+  logout.type = "button";
+  const cancel = el("button", "取消扫码");
+  cancel.type = "button";
+  cancel.hidden = true;
+  account.append(accountText, login, logout, cancel);
+  row(
+    "登录状态",
+    account,
+    "使用手机夸克 App 扫描电脑上显示的二维码，确认后会自动完成登录。无需填写应用密钥。"
   );
-  const folder = el("input");
+
+  const qrHost = el("div", "", "rsnext-quark-qr");
+  qrHost.hidden = true;
+  root.append(qrHost);
+
+  const folder = doc.createElement("input");
   folder.type = "text";
   folder.spellcheck = false;
   folder.dataset.field = "remoteRoot";
   folder.value =
     plugin.settings.quarkNative?.remoteRoot ??
-    `/remotely-save-next/${plugin.app.vault.getName()}`;
-  const prepare = el("button", "准备同步文件夹"),
-    light = el("span", "", "rsnext-connection-light"),
-    folderBox = el("div", "", "rsnext-address-control");
-  prepare.dataset.action = "prepare";
-  folderBox.append(folder, prepare, light);
-  const folderRow = row("网盘文件夹", folderBox, steps[1].section);
-  folder.id = `${uid}-folder`;
-  folderRow.querySelector("label")!.htmlFor = folder.id;
-  light.setAttribute("role", "status");
-  light.setAttribute("aria-live", "polite");
-  steps[1].section.append(
-    el(
-      "p",
-      "不存在的文件夹会自动创建。准备时会创建、覆盖并清理一个临时测试文件，验证修改已有文件的能力。",
-      "rsnext-step-help"
-    )
+    `/remotely-save-next/${plugin.app?.vault?.getName?.() ?? "我的笔记"}`;
+  row(
+    "同步文件夹",
+    folder,
+    "不存在的文件夹会自动创建。准备时会创建、覆盖并清理一个临时测试文件，验证修改已有文件的能力。"
   );
-  const feedback = el("p", "", "rsnext-step-feedback");
-  feedback.setAttribute("role", "status");
-  steps[1].section.append(feedback);
-  const conflicts = el("select");
-  for (const [value, label] of [
-    ["keep_newer", "保留较新文件（推荐）"],
-    ["keep_both", "保留双方副本"],
-  ]) {
-    const option = el("option", label);
-    option.value = value;
-    conflicts.append(option);
-  }
-  const conflict = plugin.settings.conflictAction ?? "keep_newer";
-  if (!["keep_newer", "keep_both"].includes(conflict)) {
-    const option = el("option", "保留现有高级策略");
-    option.value = conflict;
-    conflicts.append(option);
-  }
-  conflicts.value = conflict;
-  row("文件冲突时", conflicts, steps[2].section);
-  const hint = el("p", "", "rsnext-step-feedback"),
-    sync = el("button", "立即同步"),
-    status = el("p", plugin.syncUiStatus, "rsnext-status");
-  sync.dataset.action = "sync";
-  status.setAttribute("role", "status");
-  steps[2].section.append(
-    hint,
-    sync,
-    status,
+  root.append(
     el(
       "p",
       "当前仅支持电脑端手动同步。单文件最多 64 MiB，未加密空文件暂不支持。",
-      "rsnext-step-help"
+      "rsnext-hint"
     )
   );
-  const updateProgress = createSyncProgress(status, () => plugin.syncUiActivity);
-  const updateSyncControls = createSyncControls(sync, plugin);
-  const extra = el("details", "", "rsnext-advanced"),
-    extraBody = el("fieldset"),
-    preview = el("button", "预览同步计划");
-  extra.append(el("summary", "高级设置"), extraBody);
-  extra.hidden = !desktop;
-  settings.append(extra);
-  let loaded = false;
-  const controls = [
-    service,
-    login,
-    logout,
-    folder,
-    prepare,
-    conflicts,
-    sync,
-    preview,
-    extraBody,
-  ];
-  let disposed = false,
-    busy = false,
-    closeLogin: (() => void) | undefined,
-    showHistory = false,
-    limit = 20,
-    historyRevision = 0,
-    requiresValidation = false;
+  const status = el("p", "", "rsnext-status");
+  status.setAttribute("role", "status");
+  root.append(status);
+
   const logged = () => !!plugin.settings.quarkNative?.session;
   const ready = () => {
     try {
       const config = plugin.settings.quarkNative;
       return (
-        !requiresValidation &&
-        desktop &&
         logged() &&
         quarkRoot(folder.value.trim()) === config?.remoteRoot &&
-        config.overwriteVerified === quarkOverwriteBinding(config)
+        config?.overwriteVerified === quarkOverwriteBinding(config)
       );
     } catch {
       return false;
     }
   };
+
+  function update() {
+    if (disposed) return;
+    const locked = qrActive || verifyBusy || plugin.isSyncing || plugin.nativeMaintenance;
+    accountText.textContent = logged() ? "已登录" : "未登录";
+    login.textContent = logged() ? "重新扫码登录" : "扫码登录";
+    login.hidden = qrActive;
+    logout.hidden = !logged() || qrActive;
+    cancel.hidden = !qrActive;
+    login.disabled = locked;
+    logout.disabled = locked;
+    folder.disabled = locked || !logged();
+    const busyText = qrActive
+      ? "正在显示二维码…"
+      : verifyBusy
+        ? "正在准备同步文件夹并验证读写…"
+        : undefined;
+    status.textContent = busyText ?? outcome.text;
+    if (qrActive) ctx.setStatus("testing", "正在显示二维码…");
+    else if (verifyBusy) ctx.setStatus("testing", "正在准备同步文件夹并验证读写…");
+    else if (outcome.state === "idle" && logged() && ready())
+      ctx.setStatus("success", "文件夹已准备好");
+    else ctx.setStatus(outcome.state, outcome.text);
+  }
+
+  const finishLogin = () => {
+    qrActive = false;
+    closeLogin = undefined;
+    qrHost.hidden = true;
+    qrHost.replaceChildren();
+    plugin.nativeMaintenance = false;
+    update();
+  };
+
+  login.onclick = () => {
+    if (disposed || qrActive || plugin.isSyncing || plugin.nativeMaintenance)
+      return;
+    const native = loadQuarkNative();
+    if (!native) {
+      outcome = { state: "failure", text: "夸克扫码功能不可用" };
+      update();
+      return;
+    }
+    qrActive = true;
+    plugin.nativeMaintenance = true;
+    qrHost.hidden = false;
+    update();
+    try {
+      closeLogin = native.renderQuarkLoginBlock(qrHost, plugin, finishLogin);
+    } catch {
+      outcome = { state: "failure", text: "无法打开扫码窗口，请重试。" };
+      finishLogin();
+    }
+  };
+  cancel.onclick = () => closeLogin?.();
+
+  folder.oninput = () => {
+    outcome = { state: "idle", text: "文件夹已更改，请重新准备。" };
+    update();
+  };
+
+  logout.onclick = async () => {
+    if (disposed || qrActive || verifyBusy || plugin.isSyncing || plugin.nativeMaintenance)
+      return;
+    verifyBusy = true;
+    plugin.nativeMaintenance = true;
+    const previous = plugin.settings.quarkNative;
+    try {
+      plugin.settings.quarkNative = { remoteRoot: previous?.remoteRoot };
+      await plugin.saveSettings();
+      outcome = { state: "idle", text: "已退出登录。" };
+    } catch {
+      if (!plugin.settings.quarkNative?.session)
+        plugin.settings.quarkNative = previous;
+      outcome = { state: "failure", text: "退出登录未保存，请重试。" };
+    } finally {
+      verifyBusy = false;
+      plugin.nativeMaintenance = false;
+      update();
+    }
+  };
+
+  const runVerify = async (): Promise<{ ok: boolean; message: string }> => {
+    if (disposed || qrActive || verifyBusy || plugin.isSyncing || plugin.nativeMaintenance)
+      return { ok: false, message: outcome.text };
+    if (!plugin.settings.quarkNative?.session) {
+      outcome = { state: "idle", text: "请先扫码登录。" };
+      update();
+      return { ok: false, message: outcome.text };
+    }
+    const deps = loadQuarkPrepare();
+    if (!deps) {
+      outcome = { state: "failure", text: "夸克同步功能不可用" };
+      update();
+      return { ok: false, message: outcome.text };
+    }
+    verifyBusy = true;
+    plugin.nativeMaintenance = true;
+    update();
+    const previous = plugin.settings.quarkNative;
+    try {
+      const input = folder.value.trim();
+      const normalized = quarkRoot(input);
+      const config: QuarkConfig = {
+        ...previous,
+        remoteRoot: normalized,
+        overwriteVerified: undefined,
+      };
+      const guard = () => {
+        if (
+          disposed ||
+          plugin.settings.serviceType !== "quark" ||
+          plugin.settings.quarkNative !== previous ||
+          folder.value.trim() !== input
+        )
+          throw { code: "configuration_changed" };
+      };
+      const client = new deps.QuarkClient(
+        deps.getQuarkPluginTransport(plugin),
+        () => config,
+        guard
+      );
+      await client.prepareRoot();
+      await client.scan();
+      const overwriteVerified = await client.verifyOverwrite();
+      guard();
+      if (disposed) return { ok: false, message: outcome.text };
+      plugin.settings.quarkNative = { ...config, overwriteVerified };
+      try {
+        await plugin.saveSettings();
+      } catch {
+        if (plugin.settings.quarkNative !== previous)
+          plugin.settings.quarkNative = previous;
+        throw { code: "save_failed" };
+      }
+      if (disposed) return { ok: false, message: outcome.text };
+      folder.value = normalized;
+      outcome = { state: "success", text: "文件夹已准备好，读写验证通过。" };
+      return { ok: true, message: outcome.text };
+    } catch (error) {
+      outcome = { state: "failure", text: errorText(error) };
+      return { ok: false, message: outcome.text };
+    } finally {
+      verifyBusy = false;
+      plugin.nativeMaintenance = false;
+      update();
+    }
+  };
+  ctx.setTester(runVerify);
+
   const diagnosticCodes = new Set([
     "account_root_forbidden",
     "ambiguous_listing",
@@ -389,318 +494,15 @@ export function renderSimpleQuark(
     }
     return `${stage}${operation ? ` · ${operation}` : ""} · ${description} [${code}]${diagnostic}`;
   };
-  const update = () => {
-    updateProgress();
-    if (disposed) return;
-    const locked = busy || plugin.isSyncing || plugin.nativeMaintenance;
-    controls.forEach(
-      (control) =>
-        (control.disabled = locked || (!desktop && control !== service))
-    );
-    folder.disabled = locked || !desktop || !logged();
-    prepare.disabled = locked || !desktop || !logged();
-    sync.disabled = locked || !ready();
-    updateSyncControls();
-    preview.disabled = locked || !ready();
-    logout.hidden = !logged();
-    accountText.textContent = logged() ? "已登录" : "尚未登录";
-    login.textContent = logged() ? "重新扫码登录" : "扫码登录";
-    steps.forEach((step, i) => {
-      const state =
-        i === 0
-          ? logged()
-            ? "complete"
-            : "current"
-          : i === 1
-            ? ready()
-              ? "complete"
-              : logged()
-                ? "current"
-                : "locked"
-            : ready()
-              ? "current"
-              : "locked";
-      step.section.dataset.state = state;
-      step.badge.textContent =
-        state === "complete"
-          ? "已完成"
-          : state === "current"
-            ? "下一步"
-            : "等待前一步";
-      if (state === "current")
-        step.section.setAttribute("aria-current", "step");
-      else step.section.removeAttribute("aria-current");
-    });
-    login.classList.toggle("mod-cta", desktop && !logged());
-    prepare.classList.toggle("mod-cta", desktop && logged() && !ready());
-    sync.classList.toggle("mod-cta", ready());
-    hint.textContent = ready()
-      ? "文件夹已准备好，可以开始同步。"
-      : logged()
-        ? "请先准备同步文件夹。"
-        : "请先扫码登录。";
-    status.textContent = plugin.syncUiStatus;
-    [settingsTab, historyTab].forEach((tab, i) => {
-      tab.setAttribute("aria-selected", String(showHistory === !!i));
-      tab.tabIndex = showHistory === !!i ? 0 : -1;
-    });
-    settings.hidden = showHistory;
-    history.hidden = !showHistory;
-  };
-  const save = async (config: QuarkConfig) => {
-    const previous = plugin.settings.quarkNative;
-    plugin.settings.quarkNative = config;
-    try {
-      await plugin.saveSettings();
-    } catch (error) {
-      if (plugin.settings.quarkNative === config)
-        plugin.settings.quarkNative = previous;
-      throw error;
-    }
-  };
-  const run = async (action: () => Promise<void>) => {
-    if (disposed || busy || plugin.isSyncing || plugin.nativeMaintenance)
-      return;
-    busy = true;
-    plugin.nativeMaintenance = true;
-    update();
-    try {
-      await action();
-    } catch (error) {
-      if (!disposed) {
-        feedback.textContent = errorText(error);
-        light.dataset.state = "failure";
-        light.title = feedback.textContent;
-        light.setAttribute("aria-label", feedback.textContent);
-      }
-    } finally {
-      busy = false;
-      plugin.nativeMaintenance = false;
-      plugin.updateSyncUi();
-      update();
-    }
-  };
-  folder.oninput = () => {
-    requiresValidation = true;
-    feedback.textContent = "文件夹已更改，请重新准备。";
-    light.dataset.state = "idle";
-    update();
-  };
-  prepare.onclick = () => {
-    if (!desktop) return;
-    void run(async () => {
-      requiresValidation = true;
-      update();
-      const previous = plugin.settings.quarkNative,
-        input = folder.value.trim();
-      const normalized = quarkRoot(input);
-      const config = {
-        ...previous,
-        remoteRoot: normalized,
-        overwriteVerified: undefined,
-      };
-      const guard = () => {
-        if (
-          disposed ||
-          plugin.settings.serviceType !== "quark" ||
-          plugin.settings.quarkNative !== previous ||
-          folder.value.trim() !== input
-        )
-          throw { code: "configuration_changed" };
-      };
-      feedback.textContent = "正在准备文件夹并验证读写…";
-      light.dataset.state = "testing";
-      const prepared = await actions.prepare(config, guard);
-      guard();
-      await save(prepared);
-      if (disposed) return;
-      folder.value = prepared.remoteRoot!;
-      requiresValidation = false;
-      feedback.textContent = "文件夹已准备好，读写验证通过。";
-      light.dataset.state = "success";
-      light.title = feedback.textContent;
-      light.setAttribute("aria-label", feedback.textContent);
-    });
-  };
-  login.onclick = () => {
-    if (!desktop || busy || plugin.isSyncing || plugin.nativeMaintenance)
-      return;
-    busy = true;
-    plugin.nativeMaintenance = true;
-    update();
-    try {
-      closeLogin = actions.openLogin(() => {
-        closeLogin = undefined;
-        busy = false;
-        plugin.nativeMaintenance = false;
-        plugin.updateSyncUi();
-        update();
-      });
-    } catch (error) {
-      busy = false;
-      plugin.nativeMaintenance = false;
-      feedback.textContent = errorText(error);
-      update();
-    }
-  };
-  logout.onclick = () =>
-    void run(async () => {
-      await save({ remoteRoot: plugin.settings.quarkNative?.remoteRoot });
-      light.dataset.state = "idle";
-      feedback.textContent = "已退出登录。";
-    });
-  service.onchange = () =>
-    void run(async () => {
-      plugin.settings.serviceType = service.value as any;
-      await plugin.saveSettings();
-      redisplay();
-    });
-  conflicts.onchange = () =>
-    void run(async () => {
-      plugin.settings.conflictAction = conflicts.value as any;
-      await plugin.saveSettings();
-    });
-  const start = (mode: "manual" | "dry") => {
-    if (!ready() || busy || plugin.isSyncing || plugin.nativeMaintenance)
-      return;
-    void plugin.syncRun(mode).catch(() => {
-      if (!disposed) status.textContent = "同步未完成，请查看同步记录。";
-    });
-  };
-  sync.onclick = () => start("manual");
-  preview.onclick = () => start("dry");
-  extra.ontoggle = () => {
-    if (extra.open && !loaded) {
-      loaded = true;
-      advanced(extraBody);
-      extraBody.prepend(preview);
-      update();
-    }
-  };
-  const renderHistory = async () => {
-    const revision = ++historyRevision;
-    try {
-      let records: SyncActivity[] =
-        logged() && plugin.settings.quarkNative?.remoteRoot
-          ? await plugin.getSyncActivities()
-          : [];
-      if (disposed || revision !== historyRevision) return;
-      const open = new Set(
-        Array.from(history.querySelectorAll("details[open]")).map(
-          (node) => (node as HTMLElement).dataset.id
-        )
-      );
-      const active = plugin.syncUiActivity;
-      if (
-        active?.status === "running" &&
-        plugin.settings.quarkNative?.remoteRoot &&
-        logged()
-      )
-        records = [
-          active,
-          ...records.filter((record) => record.id !== active.id),
-        ];
-      history.replaceChildren();
-      history.append(
-        el("p", records.length ? "最近的同步记录" : "还没有同步记录")
-      );
-      const labels: Record<string, string> = {
-        running: "同步中",
-        success: "已完成",
-        unchanged: "没有变化",
-        partial: "部分未完成",
-        failed: "失败",
-        paused: "已暂停",
-        cancelled: "已停止",
-      };
-      for (const record of records.slice(0, limit)) {
-        const item = el("details", "", "rsnext-record");
-        item.dataset.id = record.id;
-        item.open = open.has(record.id);
-        item.append(
-          el(
-            "summary",
-            `${new Date(record.startedAt).toLocaleString()} · ${labels[record.status] ?? record.status} · 上传 ${record.counts.upload} / 下载 ${record.counts.download} / 删除 ${record.counts.delete}`
-          )
-        );
-        appendProgressResult(item, record);
-      if (record.error) item.append(el("p", record.error));
-        for (const [title, paths] of [
-          ["上传", record.files.upload],
-          ["下载", record.files.download],
-          ["删除", record.files.delete],
-          ["未完成的文件", record.failedPaths],
-          ["跳过的空文件", record.skippedPaths ?? []],
-        ] as [string, string[]][]) {
-          if (!paths.length) continue;
-          item.append(el("h4", title));
-          const list = el("ul", "", "rsnext-path-tree"),
-            more = el("button", "显示更多文件");
-          let shown = 0;
-          const append = () => {
-            for (const path of paths.slice(shown, shown + 50)) {
-              const parts = path.split("/");
-              let branch = list;
-              for (const dir of parts.slice(0, -1)) {
-                let node = Array.from(branch.children).find(
-                  (child) => (child as HTMLElement).dataset.dir === dir
-                ) as HTMLLIElement | undefined;
-                if (!node) {
-                  node = el("li");
-                  node.dataset.dir = dir;
-                  node.append(el("span", dir + "/"), el("ul"));
-                  branch.append(node);
-                }
-                branch = node.querySelector("ul")!;
-              }
-              branch.append(el("li", parts[parts.length - 1]));
-            }
-            shown += 50;
-            more.hidden = shown >= paths.length;
-          };
-          append();
-          more.onclick = append;
-          item.append(list, more);
-        }
-        history.append(item);
-      }
-      if (records.length > limit) {
-        const more = el("button", "加载更多记录");
-        more.onclick = () => {
-          limit += 20;
-          void renderHistory();
-        };
-        history.append(more);
-      }
-    } catch {
-      if (!disposed) history.textContent = "同步记录读取失败，请重试";
-    }
-  };
-  const switchTab = (show: boolean) => {
-    showHistory = show;
-    update();
-    if (show) void renderHistory();
-  };
-  settingsTab.onclick = () => switchTab(false);
-  historyTab.onclick = () => switchTab(true);
-  tabs.onkeydown = (event) => {
-    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-    event.preventDefault();
-    switchTab(
-      event.key === "Home" ? false : event.key === "End" ? true : !showHistory
-    );
-    (showHistory ? historyTab : settingsTab).focus();
-  };
-  const unsubscribe = plugin.onSyncUiUpdate(() => {
-    update();
-    if (showHistory) void renderHistory();
-  });
+
+  const unsubscribe = plugin.onSyncUiUpdate(update);
   update();
   return () => {
     disposed = true;
-    historyRevision++;
-    closeLogin?.();
     unsubscribe();
+    closeLogin?.();
+    closeLogin = undefined;
+    ctx.setTester(null);
     root.remove();
   };
 }
