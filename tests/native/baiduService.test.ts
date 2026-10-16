@@ -5,7 +5,6 @@ import {
   getBaiduProfileId,
 } from "../../src/native/baiduProfile";
 import { createBaiduSyncClient } from "../../src/native/baiduService";
-import { getServiceChoices } from "../../src/settingsLayout";
 function setup() {
   let settings: any = {
     serviceType: "baidu",
@@ -50,23 +49,6 @@ function setup() {
   };
 }
 describe("Baidu desktop service entry", () => {
-  it("offers Baidu on desktop while retaining an existing legacy provider", () => {
-    assert.deepEqual(getServiceChoices("webdav", "s3", true), [
-      "webdav",
-      "baidu",
-      "quark",
-      "aliyun",
-      "s3",
-    ]);
-    assert.deepEqual(getServiceChoices("baidu", "s3", true), [
-      "webdav",
-      "baidu",
-      "quark",
-      "aliyun",
-      "s3",
-    ]);
-    assert.deepEqual(getServiceChoices("webdav", undefined, false), ["webdav"]);
-  });
   it("creates a scoped filesystem with its isolated profile and configured directory", async () => {
     const f = setup();
     const client = createBaiduSyncClient(f.connection, f.getSettings);

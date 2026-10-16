@@ -81,6 +81,7 @@ describe("single-page settings assembly", () => {
     const warning = f.container.querySelector(".rsnext-service-warning");
     assert.ok(warning);
     assert.equal(warning!.textContent, "当前配置的服务已不再支持，请重新选择服务");
+    assert.equal(f.container.querySelectorAll('[role="alert"]').length, 1);
     assert.ok(f.container.textContent!.includes("settings_basic"));
     await tick();
     const records = f.container.querySelectorAll("details")[3];
@@ -219,6 +220,7 @@ describe("RemotelySaveSettingTab.display() routes everything through the single 
     // tests/misc.test.ts leaves a global `window` behind; webdav's UMD bundle
     // picks a browser path and blows up when it is present while loading.
     const savedWindow = (globalThis as any).window;
+    const hadWindow = "window" in globalThis;
     savedGlobalDocument = (globalThis as any).document;
     delete (globalThis as any).window;
     (Module as any)._load = function (
@@ -229,11 +231,15 @@ describe("RemotelySaveSettingTab.display() routes everything through the single 
       if (request === "obsidian") return obsidianStub;
       return originalLoad.call(this, request, parent, isMain);
     };
-    const mod = (await import("../src/settings")) as any;
-    SettingTab = mod.RemotelySaveSettingTab;
-    (Module as any)._load = originalLoad;
-    (globalThis as any).window = savedWindow;
-    (globalThis as any).document = savedGlobalDocument;
+    try {
+      const mod = (await import("../src/settings")) as any;
+      SettingTab = mod.RemotelySaveSettingTab;
+    } finally {
+      (Module as any)._load = originalLoad;
+      if (hadWindow) (globalThis as any).window = savedWindow;
+      else delete (globalThis as any).window;
+      (globalThis as any).document = savedGlobalDocument;
+    }
   });
 
   after(() => {
@@ -262,6 +268,7 @@ describe("RemotelySaveSettingTab.display() routes everything through the single 
       warning!.textContent,
       "当前配置的服务已不再支持，请重新选择服务"
     );
+    assert.equal(f.container.querySelectorAll('[role="alert"]').length, 1);
     assert.equal(f.container.querySelectorAll("details").length, 4);
     assert.ok(f.container.textContent!.includes("settings_basic"));
     f.tab.simpleCleanup?.();

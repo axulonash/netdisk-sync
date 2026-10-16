@@ -99,12 +99,6 @@ export function renderSettingsSinglePage(
           setTester: frame.setTester,
         })
       );
-    } else {
-      const warning = containerEl.ownerDocument.createElement("p");
-      warning.className = "rsnext-service-warning";
-      warning.setAttribute("role", "alert");
-      warning.textContent = "当前配置的服务已不再支持，请重新选择服务";
-      frame.sections.connection.append(warning);
     }
 
     renderBasicSection(frame.sections.basic, plugin, {

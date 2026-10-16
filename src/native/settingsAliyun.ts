@@ -1,4 +1,4 @@
-import { Modal, Notice, Platform, Setting } from "obsidian";
+import { Notice } from "obsidian";
 import QRCode from "qrcode";
 import type RemotelySavePlugin from "../main";
 import { createSettingsSection } from "../settingsLayout";
@@ -20,7 +20,7 @@ interface AliyunQrLoginState {
 /**
  * Renders the Aliyun QR login into `host`, polls the keyless session once a
  * second, saves it with rollback, then calls `done` once. Reused verbatim by
- * the inline settings fragment and, via delegation, by AliyunLoginModal.
+ * the inline settings fragment.
  */
 export function renderAliyunLoginBlock(
   host: HTMLElement,
@@ -120,27 +120,6 @@ export function renderAliyunLoginBlock(
   return Object.assign(cleanup, { ready });
 }
 
-export class AliyunLoginModal extends Modal {
-  private cleanup?: () => void;
-  constructor(
-    private readonly plugin: RemotelySavePlugin,
-    private readonly done: () => void = () => {}
-  ) {
-    super(plugin.app);
-  }
-  async onOpen() {
-    const block = renderAliyunLoginBlock(this.contentEl, this.plugin, () => {
-      this.done();
-      this.close();
-    });
-    this.cleanup = block;
-    await block.ready;
-  }
-  onClose() {
-    this.cleanup?.();
-    this.contentEl.empty();
-  }
-}
 function message(error: unknown) {
   return `阿里云盘操作失败：${error instanceof AliyunError ? error.code : "operation_failed"}`;
 }

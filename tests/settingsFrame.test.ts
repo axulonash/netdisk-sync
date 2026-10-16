@@ -29,7 +29,9 @@ function fixture(
     onServiceChange: (s) => changes.push(s),
   });
   const select = container.querySelector("select")!;
-  const light = container.querySelector(".rsnext-connection-light")!;
+  const light = container.querySelector(
+    ".rsnext-connection-light"
+  ) as HTMLElement;
   const button = Array.from(container.querySelectorAll("button")).find(
     (b) => b.textContent === "测试连接"
   )!;
