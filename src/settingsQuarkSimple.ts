@@ -13,7 +13,8 @@ type QuarkNative = typeof import("./native/settingsQuark");
 const loadQuarkNative = (): QuarkNative | undefined => {
   try {
     return require("./native/settingsQuark") as QuarkNative;
-  } catch {
+  } catch (error) {
+    console.warn("quark login block unavailable", error);
     return undefined;
   }
 };
@@ -31,7 +32,8 @@ const loadQuarkPrepare = (): QuarkPrepare | undefined => {
       getQuarkPluginTransport: require("./native/quarkService")
         .getQuarkPluginTransport,
     };
-  } catch {
+  } catch (error) {
+    console.warn("quark prepare unavailable", error);
     return undefined;
   }
 };
@@ -214,7 +216,8 @@ export function renderQuarkConnection(
     update();
     try {
       closeLogin = native.renderQuarkLoginBlock(qrHost, plugin, finishLogin);
-    } catch {
+    } catch (error) {
+      console.warn("quark QR login failed to open", error);
       outcome = { state: "failure", text: "无法打开扫码窗口，请重试。" };
       finishLogin();
     }
@@ -236,7 +239,8 @@ export function renderQuarkConnection(
       plugin.settings.quarkNative = { remoteRoot: previous?.remoteRoot };
       await plugin.saveSettings();
       outcome = { state: "idle", text: "已退出登录。" };
-    } catch {
+    } catch (error) {
+      console.warn("quark logout failed to save", error);
       if (!plugin.settings.quarkNative?.session)
         plugin.settings.quarkNative = previous;
       outcome = { state: "failure", text: "退出登录未保存，请重试。" };

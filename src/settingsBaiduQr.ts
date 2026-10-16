@@ -9,7 +9,8 @@ type BaiduNative = typeof import("./native/settingsBaiduQr");
 const loadBaiduNative = (): BaiduNative | undefined => {
   try {
     return require("./native/settingsBaiduQr") as BaiduNative;
-  } catch {
+  } catch (error) {
+    console.warn("baidu login block unavailable", error);
     return undefined;
   }
 };
@@ -159,7 +160,8 @@ export function renderBaiduConnection(
       update();
       try {
         closeLogin = native.renderBaiduQrLoginBlock(qrHost, plugin, finishLogin);
-      } catch {
+      } catch (error) {
+        console.warn("baidu QR login failed to open", error);
         outcome = { state: "failure", text: "无法打开扫码窗口，请重试。" };
         finishLogin();
       }
@@ -183,7 +185,8 @@ export function renderBaiduConnection(
       plugin.settings.baiduWebExperimental = undefined;
       await plugin.saveSettings();
       outcome = { state: "idle", text: "已退出扫码登录。" };
-    } catch {
+    } catch (error) {
+      console.warn("baidu logout failed to save", error);
       if (!plugin.settings.baiduWebExperimental)
         plugin.settings.baiduWebExperimental = previous;
       outcome = { state: "failure", text: "退出登录未保存，请重试。" };

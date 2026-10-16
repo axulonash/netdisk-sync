@@ -55,7 +55,7 @@ export function renderBaiduQrLoginBlock(host:HTMLElement,plugin:RemotelySavePlug
     }catch(error){if(!state.cancelled){stop();status.textContent=message(error);}}
     finally{state.running=false;finish();}
    };
-   state.expiry=setTimeout(()=>{stop();probe.cancel();controller.abort();if(!state.cancelled)status.textContent='二维码已过期，请关闭窗口后重新扫码。';},180000);
+   state.expiry=setTimeout(()=>{stop();probe.cancel();controller.abort();if(!state.cancelled)status.textContent='二维码已过期，请重新扫码登录。';},180000);
    state.timer=setTimeout(check,1000);
   }catch(error){if(!state.cancelled)status.textContent=message(error);}
   finally{state.running=false;finish();}

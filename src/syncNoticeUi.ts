@@ -43,18 +43,6 @@ export function createSyncNotice(
     if (!element) {
       element = document.createElement("div");
       element.className = "rsnext-sync-notice";
-      Object.assign(element.style, {
-        position: "fixed",
-        top: "12px",
-        right: "12px",
-        zIndex: "9999",
-        padding: "8px 12px",
-        borderRadius: "var(--radius-m)",
-        background: "var(--background-secondary)",
-        color: "var(--text-normal)",
-        boxShadow: "var(--shadow-s)",
-        fontSize: "var(--font-ui-small)",
-      });
       document.body.appendChild(element);
     }
     if (progress.phase === "finished" || TERMINAL_STATUS.has(activity.status)) {

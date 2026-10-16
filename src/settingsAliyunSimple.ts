@@ -216,7 +216,8 @@ export function renderAliyunConnection(
     update();
     try {
       closeLogin = native.renderAliyunLoginBlock(qrHost, plugin, finishLogin);
-    } catch {
+    } catch (error) {
+      console.warn("aliyun QR login failed to open", error);
       outcome = { state: "failure", text: "无法打开扫码窗口，请重试。" };
       finishLogin();
     }
@@ -248,7 +249,8 @@ export function renderAliyunConnection(
     try {
       await save({ remoteRoot: plugin.settings.aliyunNative?.remoteRoot });
       outcome = { state: "idle", text: "已退出登录。" };
-    } catch {
+    } catch (error) {
+      console.warn("aliyun logout failed to save", error);
       outcome = { state: "failure", text: "退出登录未保存，请重试。" };
     } finally {
       verifyBusy = false;
