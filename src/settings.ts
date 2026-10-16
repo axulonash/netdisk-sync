@@ -1,7 +1,3 @@
-import { renderSimpleAliyun } from "./settingsAliyunSimple";
-import { AliyunLoginModal } from "./native/settingsAliyun";
-import { AliyunClient } from "./native/aliyunClient";
-import { getAliyunPluginTransport } from "./native/aliyunService";
 import { renderSettingsSinglePage } from "./settingsSinglePage";
 import { createSettingsSection, getServiceChoices } from "./settingsLayout";
 import {
@@ -824,15 +820,8 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
   display(): void {
     this.simpleCleanup?.();
     this.containerEl.empty();
-    if(this.plugin.settings.serviceType === "webdav" || this.plugin.settings.serviceType === "baidu" || this.plugin.settings.serviceType === "quark") {
+    if(this.plugin.settings.serviceType === "webdav" || this.plugin.settings.serviceType === "baidu" || this.plugin.settings.serviceType === "quark" || this.plugin.settings.serviceType === "aliyun") {
       this.simpleCleanup=renderSettingsSinglePage(this.containerEl,this.plugin,Platform.isDesktopApp);
-      return;
-    }
-    if(this.plugin.settings.serviceType === "aliyun") {
-      this.simpleCleanup=renderSimpleAliyun(this.containerEl,this.plugin,{
-        openLogin:done=>{const modal=new AliyunLoginModal(this.plugin,done);modal.open();return ()=>modal.close();},
-        prepare:async(config,guard,saveSession)=>{let current=config;const client=new AliyunClient(getAliyunPluginTransport(this.plugin),()=>current,guard,async session=>{await saveSession(session);current={...current,session};});await client.prepareRoot();await client.scan();const overwriteVerified=await client.verifyOverwrite();guard();return {...current,overwriteVerified};}
-      },parent=>this.renderLegacy(parent,true),()=>this.display(),Platform.isDesktopApp);
       return;
     }
     this.renderLegacy(this.containerEl);

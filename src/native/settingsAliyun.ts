@@ -7,72 +7,91 @@ import { AliyunClient } from "./aliyunClient";
 import { getAliyunPluginTransport } from "./aliyunService";
 import { AliyunError } from "./aliyunTransport";
 
-export class AliyunLoginModal extends Modal {
-  private readonly login: AliyunQrLogin;
-  private cancelled = false;
-  private running = false;
-  private finished = false;
-  private timer?: ReturnType<typeof setInterval>;
-  private stopPolling() {
-    if (this.timer !== undefined) clearInterval(this.timer);
-    this.timer = undefined;
-  }
-  private finishClose() {
-    if (this.cancelled && !this.running && !this.finished) {
-      this.finished = true;
-      this.done();
+/** Disposer for an inline QR login; `ready` resolves after the first fetch. */
+export type AliyunQrLoginHandle = (() => void) & { ready: Promise<void> };
+
+interface AliyunQrLoginState {
+  cancelled: boolean;
+  running: boolean;
+  finished: boolean;
+  timer?: ReturnType<typeof setInterval>;
+}
+
+/**
+ * Renders the Aliyun QR login into `host`, polls the keyless session once a
+ * second, saves it with rollback, then calls `done` once. Reused verbatim by
+ * the inline settings fragment and, via delegation, by AliyunLoginModal.
+ */
+export function renderAliyunLoginBlock(
+  host: HTMLElement,
+  plugin: RemotelySavePlugin,
+  done: () => void
+): AliyunQrLoginHandle {
+  const doc = host.ownerDocument;
+  const login = new AliyunQrLogin(getAliyunPluginTransport(plugin));
+  const state: AliyunQrLoginState = {
+    cancelled: false,
+    running: false,
+    finished: false,
+  };
+  const stopPolling = () => {
+    if (state.timer !== undefined) clearInterval(state.timer);
+    state.timer = undefined;
+  };
+  const finish = () => {
+    if (state.cancelled && !state.running && !state.finished) {
+      state.finished = true;
+      done();
     }
-  }
-  constructor(
-    private readonly plugin: RemotelySavePlugin,
-    private readonly done: () => void = () => {}
-  ) {
-    super(plugin.app);
-    this.login = new AliyunQrLogin(getAliyunPluginTransport(plugin));
-  }
-  async onOpen() {
-    this.contentEl.createEl("h2", { text: "阿里云盘扫码登录" });
-    const status = this.contentEl.createEl("p", { text: "正在获取二维码…" });
-    const previous = this.plugin.settings.aliyunNative;
+  };
+  const append = <K extends keyof HTMLElementTagNameMap>(tag: K, text = "") => {
+    const node = doc.createElement(tag);
+    node.textContent = text;
+    host.append(node);
+    return node;
+  };
+  const ready = (async () => {
+    append("h2", "阿里云盘扫码登录");
+    const status = append("p", "正在获取二维码…");
+    const previous = plugin.settings.aliyunNative;
     try {
-      const url = await this.login.start();
+      const url = await login.start();
       const image = await QRCode.toDataURL(url, { width: 240, margin: 2 });
-      if (this.cancelled) return;
-      this.contentEl.createEl("img", {
-        attr: {
-          src: image,
-          alt: "使用阿里云盘 App 扫码登录",
-          width: "240",
-          height: "240",
-        },
-      });
+      if (state.cancelled) return;
+      const img = doc.createElement("img");
+      img.setAttribute("src", image);
+      img.setAttribute("alt", "使用阿里云盘 App 扫码登录");
+      img.setAttribute("width", "240");
+      img.setAttribute("height", "240");
+      host.append(img);
       status.textContent =
         "使用阿里云盘 App 扫码并确认，登录成功后会自动完成。二维码五分钟后失效。";
       const check = async () => {
-        if (this.running || this.cancelled) return;
-        this.running = true;
+        if (state.running || state.cancelled) return;
+        state.running = true;
         try {
-          const session = await this.login.check();
-          if (this.cancelled) return;
+          const session = await login.check();
+          if (state.cancelled) return;
           if (!session) {
             status.textContent = "等待扫码确认，正在自动检查…";
             return;
           }
-          this.stopPolling();
-          if (this.plugin.settings.aliyunNative !== previous)
+          stopPolling();
+          if (plugin.settings.aliyunNative !== previous)
             throw new AliyunError("configuration_changed");
           status.textContent = "登录成功，正在保存…";
-          await saveAliyunConfig(this.plugin, {
+          await saveAliyunConfig(plugin, {
             ...previous,
             session,
             overwriteVerified: undefined,
           });
-          if (!this.cancelled) {
+          if (!state.cancelled) {
             new Notice("阿里云盘已登录，请准备同步文件夹。");
-            this.close();
+            state.finished = true;
+            done();
           }
         } catch (error) {
-          if (!this.cancelled) status.textContent = message(error);
+          if (!state.cancelled) status.textContent = message(error);
           if (
             !(error instanceof AliyunError) ||
             ![
@@ -81,23 +100,45 @@ export class AliyunLoginModal extends Modal {
               "incomplete_response",
             ].includes(error.code)
           )
-            this.stopPolling();
+            stopPolling();
         } finally {
-          this.running = false;
-          this.finishClose();
+          state.running = false;
+          finish();
         }
       };
-      this.timer = setInterval(check, 1000);
+      state.timer = setInterval(check, 1000);
     } catch (error) {
-      if (!this.cancelled) status.textContent = message(error);
+      if (!state.cancelled) status.textContent = message(error);
     }
+  })();
+  const cleanup = () => {
+    stopPolling();
+    state.cancelled = true;
+    login.cancel();
+    finish();
+  };
+  return Object.assign(cleanup, { ready });
+}
+
+export class AliyunLoginModal extends Modal {
+  private cleanup?: () => void;
+  constructor(
+    private readonly plugin: RemotelySavePlugin,
+    private readonly done: () => void = () => {}
+  ) {
+    super(plugin.app);
+  }
+  async onOpen() {
+    const block = renderAliyunLoginBlock(this.contentEl, this.plugin, () => {
+      this.done();
+      this.close();
+    });
+    this.cleanup = block;
+    await block.ready;
   }
   onClose() {
-    this.stopPolling();
-    this.cancelled = true;
-    this.login.cancel();
+    this.cleanup?.();
     this.contentEl.empty();
-    this.finishClose();
   }
 }
 function message(error: unknown) {

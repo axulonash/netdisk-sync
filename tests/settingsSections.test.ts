@@ -364,6 +364,34 @@ describe("renderAdvancedSection", () => {
     assert.ok(f.rowFor("settings_conflictaction")!.hidden);
     assert.ok(!advancedFixture().rowFor("settings_conflictaction")!.hidden);
   });
+
+  it("renders an existing keep_both conflict action as selected", () => {
+    const f = advancedFixture({ conflictAction: "keep_both" });
+    const select = f
+      .rowFor("settings_conflictaction")!
+      .querySelector("select") as HTMLSelectElement;
+    assert.ok(
+      Array.from(select.options).some((o) => o.value === "keep_both"),
+      "keep_both option present"
+    );
+    assert.equal(select.value, "keep_both");
+  });
+
+  it("preserves an out-of-list conflict action and re-saves it unchanged", async () => {
+    const f = advancedFixture({ conflictAction: "some_retired_action" });
+    const select = f
+      .rowFor("settings_conflictaction")!
+      .querySelector("select") as HTMLSelectElement;
+    const preserved = Array.from(select.options).find(
+      (o) => o.value === "some_retired_action"
+    );
+    assert.ok(preserved, "out-of-list value keeps its own option");
+    assert.equal(select.value, "some_retired_action");
+    select.dispatchEvent(new f.dom.window.Event("change"));
+    await tick();
+    assert.equal(f.plugin.settings.conflictAction, "some_retired_action");
+    assert.deepEqual(f.calls, ["save"]);
+  });
 });
 
 function importExportFixture() {

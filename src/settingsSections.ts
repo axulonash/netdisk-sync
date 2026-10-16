@@ -628,17 +628,23 @@ export function renderAdvancedSection(
     }
     return desc;
   };
+  const conflictValue = plugin.settings.conflictAction ?? "keep_newer";
+  const conflictOptions: [string, string][] = [
+    ["keep_newer", t("settings_conflictaction_keep_newer")],
+    ["keep_both", "保留双方副本"],
+    ["keep_larger", t("settings_conflictaction_keep_larger")],
+    ["smart_conflict", t("settings_conflictaction_smart_conflict")],
+  ];
+  // Keep an out-of-list saved value selectable instead of silently resetting it.
+  if (!conflictOptions.some(([value]) => value === conflictValue))
+    conflictOptions.push([conflictValue, "保留现有高级策略"]);
   const conflict = appendRow(
     el,
     t("settings_conflictaction"),
     makeSelect(
       doc,
-      [
-        ["keep_newer", t("settings_conflictaction_keep_newer")],
-        ["keep_larger", t("settings_conflictaction_keep_larger")],
-        ["smart_conflict", t("settings_conflictaction_smart_conflict")],
-      ],
-      plugin.settings.conflictAction ?? "keep_newer",
+      conflictOptions,
+      conflictValue,
       async (val) => {
         plugin.settings.conflictAction = val as ConflictActionType;
         await plugin.saveSettings();
