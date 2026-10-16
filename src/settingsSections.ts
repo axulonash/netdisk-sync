@@ -234,9 +234,8 @@ export function renderBasicSection(
 }
 
 /**
- * Native advanced-section content shared by the legacy tab (single source of
- * truth until renderLegacy is removed): the whole 高级 area — the password and
- * encryption-method rows moved out of 基本, skip-large-files, status-bar
+ * Native 高级-section content for the settings single page: the whole 高级 area —
+ * the password and encryption-method rows moved out of 基本, skip-large-files, status-bar
  * helpers, ignore/allowed paths, sync-config-dir, concurrency,
  * underscore/bookmarks/delete options, ClearDupFiles (pro, injected so this
  * module stays obsidian-free), modify-protection percentage and the mobile
