@@ -8,7 +8,7 @@ import { renderSimpleQuark } from "./settingsQuarkSimple";
 import { QuarkLoginModal } from "./native/settingsQuark";
 import { QuarkClient } from "./native/quarkClient";
 import { getQuarkPluginTransport } from "./native/quarkService";
-import { renderSimpleWebdav } from "./settingsWebdavSimple";
+import { renderSettingsSinglePage } from "./settingsSinglePage";
 import { createSettingsSection, getServiceChoices } from "./settingsLayout";
 import {
   renderAdvancedSection,
@@ -831,8 +831,7 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
     this.simpleCleanup?.();
     this.containerEl.empty();
     if(this.plugin.settings.serviceType === "webdav") {
-      this.simpleCleanup=renderSimpleWebdav(this.containerEl,this.plugin,
-        parent=>this.renderLegacy(parent,true),()=>this.display(),Platform.isDesktopApp);
+      this.simpleCleanup=renderSettingsSinglePage(this.containerEl,this.plugin,Platform.isDesktopApp);
       return;
     }
     if(this.plugin.settings.serviceType === "baidu") {

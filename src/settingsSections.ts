@@ -18,7 +18,7 @@ import {
   upsertLastSuccessSyncTimeByVault,
 } from "./localdb";
 import type RemotelySavePlugin from "./main";
-import { changeMobileStatusBar, stringToFragment } from "./misc";
+import { changeMobileStatusBar } from "./misc";
 import { DEFAULT_PROFILER_CONFIG } from "./profiler";
 
 type CloseInline = () => void;
@@ -842,8 +842,9 @@ function renderQrCodeInline(
         notice(t("modal_qr_button_notice"));
       };
       img.src = imgUri;
-    } catch {
-      // loadImportExport only fails outside the Obsidian runtime (e.g. tests)
+    } catch (e) {
+      // exportQrCodeUri can fail at runtime (importExport load, QR/clipboard errors)
+      console.error(e);
     }
   })();
 }
