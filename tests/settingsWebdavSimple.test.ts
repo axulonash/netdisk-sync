@@ -10,9 +10,7 @@ function fixture() {
   const events: string[] = [];
   const statuses: { state: string; text: string }[] = [];
   const listeners = new Set<() => void>();
-  let tester:
-    | (() => Promise<{ ok: boolean; message: string }>)
-    | null = null;
+  let tester: (() => Promise<{ ok: boolean; message: string }>) | null = null;
   const plugin: any = {
     settings: {
       serviceType: "webdav",

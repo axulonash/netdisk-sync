@@ -33,7 +33,11 @@ describe("floating sync notice", () => {
     const element = document.querySelector<HTMLElement>(".rsnext-sync-notice");
     assert.ok(element);
     assert.ok(element.querySelector("progress"));
-    assert.ok(element.textContent?.includes(progressStatus(plugin.syncUiActivity.progress)));
+    assert.ok(
+      element.textContent?.includes(
+        progressStatus(plugin.syncUiActivity.progress)
+      )
+    );
     notice.destroy();
   });
 
@@ -77,7 +81,11 @@ describe("floating sync notice", () => {
       progress: { phase: "finished", completed: 1, failed: 0, unexecuted: 1 },
     };
     fire();
-    assert.ok(document.querySelector(".rsnext-sync-notice")?.textContent?.includes("同步已暂停"));
+    assert.ok(
+      document
+        .querySelector(".rsnext-sync-notice")
+        ?.textContent?.includes("同步已暂停")
+    );
     await new Promise((resolve) => setTimeout(resolve, 20));
     assert.equal(document.querySelector(".rsnext-sync-notice"), null);
     notice.destroy();

@@ -68,7 +68,9 @@ describe("shared sync records section", () => {
   it("reveals file paths when a row is expanded", async () => {
     const f = fixture();
     await tick();
-    const row = f.sectionEl.querySelector(".rsnext-record") as HTMLDetailsElement;
+    const row = f.sectionEl.querySelector(
+      ".rsnext-record"
+    ) as HTMLDetailsElement;
     assert.equal(row.open, false);
     (row.querySelector("summary") as HTMLElement).dispatchEvent(
       new f.dom.window.MouseEvent("click", { bubbles: true })

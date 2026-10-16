@@ -1,11 +1,11 @@
 import type RemotelySavePlugin from "./main";
-import type { ConnectionState } from "./settingsFrame";
 import {
-  aliyunRoot,
-  aliyunOverwriteBinding,
   type AliyunConfig,
+  aliyunOverwriteBinding,
+  aliyunRoot,
 } from "./native/aliyunAuth";
 import { ALIYUN_SAFE_SERVER_CODES } from "./native/aliyunTransport";
+import type { ConnectionState } from "./settingsFrame";
 
 type AliyunNative = typeof import("./native/settingsAliyun");
 // The QR block/module imports obsidian at load; require it lazily so the
@@ -50,7 +50,9 @@ export function renderAliyunConnection(
     desktop: boolean;
     redisplay: () => void;
     setStatus(s: ConnectionState, text: string): void;
-    setTester(t: (() => Promise<{ ok: boolean; message: string }>) | null): void;
+    setTester(
+      t: (() => Promise<{ ok: boolean; message: string }>) | null
+    ): void;
   }
 ): () => void {
   const doc = parent.ownerDocument;
@@ -170,7 +172,8 @@ export function renderAliyunConnection(
 
   function update() {
     if (disposed) return;
-    const locked = qrActive || verifyBusy || plugin.isSyncing || plugin.nativeMaintenance;
+    const locked =
+      qrActive || verifyBusy || plugin.isSyncing || plugin.nativeMaintenance;
     accountText.textContent = logged() ? "已登录" : "未登录";
     login.textContent = logged() ? "重新扫码登录" : "扫码登录";
     login.hidden = qrActive;
@@ -186,7 +189,8 @@ export function renderAliyunConnection(
         : undefined;
     status.textContent = busyText ?? outcome.text;
     if (qrActive) ctx.setStatus("testing", "正在显示二维码…");
-    else if (verifyBusy) ctx.setStatus("testing", "正在准备同步文件夹并验证读写…");
+    else if (verifyBusy)
+      ctx.setStatus("testing", "正在准备同步文件夹并验证读写…");
     else if (outcome.state === "idle" && logged() && ready())
       ctx.setStatus("success", "文件夹已准备好");
     else ctx.setStatus(outcome.state, outcome.text);
@@ -218,7 +222,7 @@ export function renderAliyunConnection(
       closeLogin = native.renderAliyunLoginBlock(qrHost, plugin, finishLogin);
     } catch (error) {
       console.warn("aliyun QR login failed to open", error);
-      outcome = { state: "failure", text: "无法打开扫码窗口，请重试。" };
+      outcome = { state: "failure", text: "无法显示二维码，请重试。" };
       finishLogin();
     }
   };
@@ -242,7 +246,13 @@ export function renderAliyunConnection(
   };
 
   logout.onclick = async () => {
-    if (disposed || qrActive || verifyBusy || plugin.isSyncing || plugin.nativeMaintenance)
+    if (
+      disposed ||
+      qrActive ||
+      verifyBusy ||
+      plugin.isSyncing ||
+      plugin.nativeMaintenance
+    )
       return;
     verifyBusy = true;
     plugin.nativeMaintenance = true;
@@ -260,7 +270,13 @@ export function renderAliyunConnection(
   };
 
   const runVerify = async (): Promise<{ ok: boolean; message: string }> => {
-    if (disposed || qrActive || verifyBusy || plugin.isSyncing || plugin.nativeMaintenance)
+    if (
+      disposed ||
+      qrActive ||
+      verifyBusy ||
+      plugin.isSyncing ||
+      plugin.nativeMaintenance
+    )
       return { ok: false, message: outcome.text };
     if (!plugin.settings.aliyunNative?.session) {
       outcome = { state: "idle", text: "请先扫码登录。" };

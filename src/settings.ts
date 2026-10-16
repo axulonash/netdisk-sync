@@ -1,4 +1,3 @@
-import { renderSettingsSinglePage } from "./settingsSinglePage";
 import { Eye, EyeOff, createElement } from "lucide";
 import {
   type App,
@@ -13,6 +12,7 @@ import type { SUPPORTED_SERVICES_TYPE_WITH_REMOTE_BASE_DIR } from "./baseTypes";
 import type { TransItemType } from "./i18n";
 import type RemotelySavePlugin from "./main"; // unavoidable
 import { checkHasSpecialCharForDir } from "./misc";
+import { renderSettingsSinglePage } from "./settingsSinglePage";
 
 export class ChangeRemoteBaseDirModal extends Modal {
   readonly plugin: RemotelySavePlugin;
@@ -154,7 +154,8 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
   }
 
   hide() {
-    this.simpleCleanup?.();this.simpleCleanup=undefined;
+    this.simpleCleanup?.();
+    this.simpleCleanup = undefined;
     const { containerEl } = this;
     containerEl.empty();
     super.hide();

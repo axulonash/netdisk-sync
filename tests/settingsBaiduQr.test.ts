@@ -1,9 +1,9 @@
 import { strict as assert } from "assert";
-import { JSDOM } from "jsdom";
 import Module from "module";
+import { JSDOM } from "jsdom";
+import { baiduWebBinding } from "../src/native/baiduWebSync";
 import { renderBaiduConnection } from "../src/settingsBaiduQr";
 import { renderSettingsSinglePage } from "../src/settingsSinglePage";
-import { baiduWebBinding } from "../src/native/baiduWebSync";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -15,9 +15,7 @@ const httpsState: { responses: any[] } = { responses: [] };
 
 const obsidianStub = {
   Platform: { isDesktopApp: true },
-  Notice: class {
-    constructor(_message?: string) {}
-  },
+  Notice: class {},
   Modal: class {
     contentEl: HTMLElement;
     constructor(_app: any) {
@@ -68,11 +66,18 @@ const fromBaidu = (parent: any) =>
 
 describe("Baidu QR settings fragment", () => {
   before(() => {
-    (Module as any)._load = function (request: string, parent: any, isMain: boolean) {
+    (Module as any)._load = function (
+      request: string,
+      parent: any,
+      isMain: boolean
+    ) {
       if (fromBaidu(parent)) {
         if (request === "obsidian") return obsidianStub;
         if (request === "node:https") return httpsStub;
-        if (request === "./native/settingsBaiduQr" && nativeOverride !== undefined)
+        if (
+          request === "./native/settingsBaiduQr" &&
+          nativeOverride !== undefined
+        )
           return nativeOverride;
       }
       return originalLoad.call(this, request, parent, isMain);
@@ -93,9 +98,7 @@ describe("Baidu QR settings fragment", () => {
     const parent = dom.window.document.querySelector("main")!;
     const listeners = new Set<() => void>();
     const statuses: { state: string; text: string }[] = [];
-    let tester:
-      | (() => Promise<{ ok: boolean; message: string }>)
-      | null = null;
+    let tester: (() => Promise<{ ok: boolean; message: string }>) | null = null;
     let saves = 0;
     const plugin: any = {
       settings: {
@@ -156,13 +159,24 @@ describe("Baidu QR settings fragment", () => {
 
   it("renders the QR login inline instead of a modal", async () => {
     httpsState.responses = [
-      { json: { errno: 0, sign: "ticket", imgurl: "passport.baidu.com/v2/api/qrcode?sign=ticket" } },
+      {
+        json: {
+          errno: 0,
+          sign: "ticket",
+          imgurl: "passport.baidu.com/v2/api/qrcode?sign=ticket",
+        },
+      },
       { body: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]) },
     ];
     const f = fixture();
-    (f.parent.querySelector('[data-action="login"]') as HTMLButtonElement).click();
+    (
+      f.parent.querySelector('[data-action="login"]') as HTMLButtonElement
+    ).click();
     await tick();
-    assert.ok(f.parent.querySelector(".rsnext-baidu-qr img"), "QR image is inline");
+    assert.ok(
+      f.parent.querySelector(".rsnext-baidu-qr img"),
+      "QR image is inline"
+    );
     assert.equal(f.dom.window.document.querySelector(".modal"), null);
     assert.ok(f.parent.textContent!.includes("百度网盘扫码登录"));
     f.cleanup();
@@ -182,7 +196,10 @@ describe("Baidu QR settings fragment", () => {
     assert.equal(before.ok, false);
     assert.equal(f.plugin.settings.baiduWebPrepared, undefined);
 
-    f.plugin.settings.baiduWebExperimental = { cookie: "BDUSS=fixture", csrf: "csrf" };
+    f.plugin.settings.baiduWebExperimental = {
+      cookie: "BDUSS=fixture",
+      csrf: "csrf",
+    };
     const after = await f.tester()!();
     assert.equal(after.ok, true);
     assert.deepEqual(verified, [f.plugin.settings.baiduWebRemoteRoot]);
@@ -204,7 +221,10 @@ describe("Baidu QR settings fragment", () => {
       }),
     };
     const f = fixture();
-    f.plugin.settings.baiduWebExperimental = { cookie: "BDUSS=fixture", csrf: "csrf" };
+    f.plugin.settings.baiduWebExperimental = {
+      cookie: "BDUSS=fixture",
+      csrf: "csrf",
+    };
     const directory = f.parent.querySelector(
       '[data-field="remoteRoot"]'
     ) as HTMLInputElement;
@@ -228,7 +248,10 @@ describe("Baidu QR settings fragment", () => {
       }),
     };
     const f = fixture();
-    f.plugin.settings.baiduWebExperimental = { cookie: "BDUSS=fixture", csrf: "csrf" };
+    f.plugin.settings.baiduWebExperimental = {
+      cookie: "BDUSS=fixture",
+      csrf: "csrf",
+    };
     f.plugin.saveSettings = async () => {
       throw Error("private-cookie");
     };
@@ -265,7 +288,11 @@ describe("Baidu QR settings fragment", () => {
         s3: {},
       },
       app: { vault: { getName: () => "笔记", configDir: ".obsidian" } },
-      manifest: { name: "remotely-save-next", version: "1.0.0", id: "remotely-save-next" },
+      manifest: {
+        name: "remotely-save-next",
+        version: "1.0.0",
+        id: "remotely-save-next",
+      },
       i18n: { t: (key: string) => key },
       syncUiStatus: "尚未同步",
       isSyncing: false,
@@ -304,7 +331,9 @@ describe("Baidu QR settings fragment", () => {
     const f = fixture();
     assert.equal(f.listeners.size, 1);
     assert.ok(f.tester());
-    (f.parent.querySelector('[data-action="login"]') as HTMLButtonElement).click();
+    (
+      f.parent.querySelector('[data-action="login"]') as HTMLButtonElement
+    ).click();
     f.cleanup();
     assert.equal(f.listeners.size, 0);
     assert.equal(blockCleanups, 1);

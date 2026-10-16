@@ -38,7 +38,8 @@ export function createSyncNotice(
     if (destroyed) return;
     const activity = plugin.syncUiActivity;
     const progress = activity?.progress;
-    if (!activity || !progress || !VISIBLE_TRIGGERS.has(activity.trigger)) return;
+    if (!activity || !progress || !VISIBLE_TRIGGERS.has(activity.trigger))
+      return;
     if (activity === dismissedActivity) return;
     if (!element) {
       element = document.createElement("div");

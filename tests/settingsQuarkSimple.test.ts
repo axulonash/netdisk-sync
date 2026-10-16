@@ -1,12 +1,12 @@
 import { strict as assert } from "assert";
-import { JSDOM } from "jsdom";
 import Module from "module";
-import { renderQuarkConnection } from "../src/settingsQuarkSimple";
-import { renderSettingsSinglePage } from "../src/settingsSinglePage";
+import { JSDOM } from "jsdom";
 import {
   bindQuarkSession,
   quarkOverwriteBinding,
 } from "../src/native/quarkAuth";
+import { renderQuarkConnection } from "../src/settingsQuarkSimple";
+import { renderSettingsSinglePage } from "../src/settingsSinglePage";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -17,9 +17,7 @@ let currentDoc: Document | undefined;
 
 const obsidianStub = {
   Platform: { isDesktopApp: true },
-  Notice: class {
-    constructor(_message?: string) {}
-  },
+  Notice: class {},
   Modal: class {
     contentEl: HTMLElement;
     constructor(_app: any) {
@@ -34,7 +32,6 @@ const obsidianStub = {
     }
   },
   Setting: class {
-    constructor(..._args: any[]) {}
     setName() {
       return this;
     }
@@ -95,10 +92,7 @@ describe("Quark connection fragment", () => {
         if (request === "qrcode") return qrcodeStub;
         if (request === "./native/quarkClient" || request === "./quarkClient")
           return { QuarkClient: FakeQuarkClient };
-        if (
-          request === "./native/quarkService" ||
-          request === "./quarkService"
-        )
+        if (request === "./native/quarkService" || request === "./quarkService")
           return { getQuarkPluginTransport: () => transportStub };
         if (
           request === "./native/settingsQuark" &&
@@ -125,9 +119,7 @@ describe("Quark connection fragment", () => {
     const parent = dom.window.document.querySelector("main")!;
     const listeners = new Set<() => void>();
     const statuses: { state: string; text: string }[] = [];
-    let tester:
-      | (() => Promise<{ ok: boolean; message: string }>)
-      | null = null;
+    let tester: (() => Promise<{ ok: boolean; message: string }>) | null = null;
     let saves = 0;
     const plugin: any = {
       settings: {
@@ -174,7 +166,9 @@ describe("Quark connection fragment", () => {
 
   it("renders the QR login inline instead of a modal", async () => {
     const f = fixture();
-    (f.parent.querySelector('[data-action="login"]') as HTMLButtonElement).click();
+    (
+      f.parent.querySelector('[data-action="login"]') as HTMLButtonElement
+    ).click();
     await tick();
     await tick();
     assert.ok(
@@ -220,7 +214,9 @@ describe("Quark connection fragment", () => {
   it("rejects an in-flight preparation after settings change", async () => {
     const f = fixture();
     let release!: () => void;
-    const pending = new Promise<void>((resolve) => (release = resolve));
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     verifyImpl = async (config: any) => {
       await pending;
       return quarkOverwriteBinding(config);
@@ -372,7 +368,9 @@ describe("Quark connection fragment", () => {
     const f = fixture();
     assert.equal(f.listeners.size, 1);
     assert.ok(f.tester());
-    (f.parent.querySelector('[data-action="login"]') as HTMLButtonElement).click();
+    (
+      f.parent.querySelector('[data-action="login"]') as HTMLButtonElement
+    ).click();
     f.cleanup();
     assert.equal(f.listeners.size, 0);
     assert.equal(blockCleanups, 1);

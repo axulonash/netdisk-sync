@@ -32,10 +32,13 @@ const EYE_OFF_SVG =
 
 // Only one inline editor is open across the whole settings page; opening a new
 // one closes (and empties) the previous host first.
-let openInline: { host: HTMLElement; close: CloseInline | undefined } | undefined;
+let openInline:
+  | { host: HTMLElement; close: CloseInline | undefined }
+  | undefined;
 
 export function openInlineExclusive(
   host: HTMLElement,
+  // biome-ignore lint/suspicious/noConfusingVoidType: a void return means "no cleanup" (callers may not return a closer)
   render: (el: HTMLElement) => CloseInline | void
 ): void {
   openInline?.close?.();
@@ -449,7 +452,11 @@ export function renderAdvancedSection(
         plugin.vaultRandomID,
         -1
       );
-      await upsertLastFailedSyncTimeByVault(plugin.db, plugin.vaultRandomID, -1);
+      await upsertLastFailedSyncTimeByVault(
+        plugin.db,
+        plugin.vaultRandomID,
+        -1
+      );
       plugin.updateLastSyncMsg(undefined, "not_syncing", null, null);
       notice(t("settings_resetstatusbar_notice"));
     };
@@ -503,7 +510,11 @@ export function renderAdvancedSection(
         for (const line of t("modal_syncconfig_attn").split("\n")) {
           host.append(node(doc, "p", line));
         }
-        const confirm = node(doc, "button", t("modal_syncconfig_secondconfirm"));
+        const confirm = node(
+          doc,
+          "button",
+          t("modal_syncconfig_secondconfirm")
+        );
         const back = node(doc, "button", t("goback"));
         confirm.onclick = async () => {
           plugin.settings.syncConfigDir = true;
@@ -641,16 +652,11 @@ export function renderAdvancedSection(
   const conflict = appendRow(
     el,
     t("settings_conflictaction"),
-    makeSelect(
-      doc,
-      conflictOptions,
-      conflictValue,
-      async (val) => {
-        plugin.settings.conflictAction = val as ConflictActionType;
-        await plugin.saveSettings();
-        conflict.hint?.replaceChildren(fragment(doc, conflictDesc()));
-      }
-    ),
+    makeSelect(doc, conflictOptions, conflictValue, async (val) => {
+      plugin.settings.conflictAction = val as ConflictActionType;
+      await plugin.saveSettings();
+      conflict.hint?.replaceChildren(fragment(doc, conflictDesc()));
+    }),
     fragment(doc, conflictDesc())
   );
   conflict.box.hidden = opts.advancedOnly === true;
@@ -885,7 +891,11 @@ export function renderDebugSection(
     t("settings_debuglevel_desc")
   );
 
-  const output = node(doc, "button", t("settings_outputsettingsconsole_button"));
+  const output = node(
+    doc,
+    "button",
+    t("settings_outputsettingsconsole_button")
+  );
   output.onclick = async () => {
     const c = messyConfigToNormal(await plugin.loadData());
     console.info(c);

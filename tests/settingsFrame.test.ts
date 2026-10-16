@@ -66,7 +66,19 @@ describe("Settings frame skeleton", () => {
       Array.from(details).map((d) => d.querySelector("summary")!.textContent),
       ["连接", "基本", "高级", "同步记录"]
     );
-    assert.ok(frame.progressHost instanceof container.ownerDocument.defaultView!.HTMLElement);
+    assert.ok(
+      frame.progressHost instanceof
+        container.ownerDocument.defaultView!.HTMLElement
+    );
+  });
+
+  it("opens 连接 and 基本 by default, collapses 高级 and 同步记录", () => {
+    const { container } = fixture();
+    const details = Array.from(container.querySelectorAll("details"));
+    assert.deepEqual(
+      details.map((d) => d.open),
+      [true, true, false, false]
+    );
   });
 
   it("warns and clears selection when the service is unsupported", () => {
@@ -74,7 +86,10 @@ describe("Settings frame skeleton", () => {
     assert.equal(select.value, "");
     const warning = container.querySelector(".rsnext-service-warning")!;
     assert.ok(warning);
-    assert.equal(warning.textContent, "当前配置的服务已不再支持，请重新选择服务");
+    assert.equal(
+      warning.textContent,
+      "当前配置的服务已不再支持，请重新选择服务"
+    );
   });
 
   it("notifies listeners when the service changes", () => {
@@ -91,7 +106,12 @@ describe("Settings frame skeleton", () => {
     assert.equal(f.button.hidden, true);
 
     let resolve: (r: { ok: boolean; message: string }) => void = () => {};
-    f.frame.setTester(() => new Promise((r) => (resolve = r)));
+    f.frame.setTester(
+      () =>
+        new Promise((r) => {
+          resolve = r;
+        })
+    );
     assert.equal(f.button.hidden, false);
     f.fire(f.button, "click");
     assert.equal(f.light.dataset.state, "testing");
@@ -100,7 +120,12 @@ describe("Settings frame skeleton", () => {
     assert.equal(f.light.dataset.state, "success");
 
     let resolve2: (r: { ok: boolean; message: string }) => void = () => {};
-    f.frame.setTester(() => new Promise((r) => (resolve2 = r)));
+    f.frame.setTester(
+      () =>
+        new Promise((r) => {
+          resolve2 = r;
+        })
+    );
     f.fire(f.button, "click");
     assert.equal(f.light.dataset.state, "testing");
     resolve2({ ok: false, message: "连接失败" });

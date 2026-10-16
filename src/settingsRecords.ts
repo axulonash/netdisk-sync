@@ -93,8 +93,8 @@ export function createRecordsSection(
         const paths = record.files[action];
         if (!paths.length) continue;
         item.append(el("h4", `${label} ${record.counts[action]}`));
-        const list = el("ul", "", "rsnext-path-tree"),
-          more = el("button", "显示更多文件");
+        const list = el("ul", "", "rsnext-path-tree");
+        const more = el("button", "显示更多文件");
         let shown = 0;
         const append = () => {
           for (const path of paths.slice(shown, shown + 50)) {

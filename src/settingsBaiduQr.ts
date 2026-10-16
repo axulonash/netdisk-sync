@@ -1,6 +1,6 @@
-import { baiduWebBinding } from "./native/baiduWebSync";
-import { baiduWebRoot } from "./native/baiduWebProbe";
 import type RemotelySavePlugin from "./main";
+import { baiduWebRoot } from "./native/baiduWebProbe";
+import { baiduWebBinding } from "./native/baiduWebSync";
 import type { ConnectionState } from "./settingsFrame";
 
 type BaiduNative = typeof import("./native/settingsBaiduQr");
@@ -27,7 +27,9 @@ export function renderBaiduConnection(
     desktop: boolean;
     redisplay: () => void;
     setStatus(s: ConnectionState, text: string): void;
-    setTester(t: (() => Promise<{ ok: boolean; message: string }>) | null): void;
+    setTester(
+      t: (() => Promise<{ ok: boolean; message: string }>) | null
+    ): void;
   }
 ): () => void {
   const doc = parent.ownerDocument;
@@ -117,10 +119,7 @@ export function renderBaiduConnection(
   function update() {
     if (disposed) return;
     const locked =
-      qrActive ||
-      verifyBusy ||
-      plugin.isSyncing ||
-      plugin.nativeMaintenance;
+      qrActive || verifyBusy || plugin.isSyncing || plugin.nativeMaintenance;
     const logged = !!plugin.settings.baiduWebExperimental;
     account.textContent = logged ? "已登录" : "未登录";
     login.textContent = logged ? "重新扫码登录" : "扫码登录";
@@ -131,7 +130,8 @@ export function renderBaiduConnection(
     logout.disabled = locked;
     directory.disabled = locked || !logged;
     if (qrActive) ctx.setStatus("testing", "正在获取百度二维码…");
-    else if (verifyBusy) ctx.setStatus("testing", "正在准备同步文件夹及验证读写…");
+    else if (verifyBusy)
+      ctx.setStatus("testing", "正在准备同步文件夹及验证读写…");
     else if (outcome.state === "idle" && logged && ready())
       ctx.setStatus("success", "文件夹已准备好");
     else ctx.setStatus(outcome.state, outcome.text);
@@ -147,7 +147,12 @@ export function renderBaiduConnection(
   };
 
   login.onclick = () => {
-    if (!disposed && !qrActive && !plugin.isSyncing && !plugin.nativeMaintenance) {
+    if (
+      !disposed &&
+      !qrActive &&
+      !plugin.isSyncing &&
+      !plugin.nativeMaintenance
+    ) {
       const native = loadBaiduNative();
       if (!native) {
         outcome = { state: "failure", text: "百度扫码功能不可用" };
@@ -159,10 +164,14 @@ export function renderBaiduConnection(
       qrHost.hidden = false;
       update();
       try {
-        closeLogin = native.renderBaiduQrLoginBlock(qrHost, plugin, finishLogin);
+        closeLogin = native.renderBaiduQrLoginBlock(
+          qrHost,
+          plugin,
+          finishLogin
+        );
       } catch (error) {
         console.warn("baidu QR login failed to open", error);
-        outcome = { state: "failure", text: "无法打开扫码窗口，请重试。" };
+        outcome = { state: "failure", text: "无法显示二维码，请重试。" };
         finishLogin();
       }
     }
@@ -176,7 +185,13 @@ export function renderBaiduConnection(
   };
 
   logout.onclick = async () => {
-    if (disposed || qrActive || verifyBusy || plugin.isSyncing || plugin.nativeMaintenance)
+    if (
+      disposed ||
+      qrActive ||
+      verifyBusy ||
+      plugin.isSyncing ||
+      plugin.nativeMaintenance
+    )
       return;
     verifyBusy = true;
     plugin.nativeMaintenance = true;
@@ -198,7 +213,13 @@ export function renderBaiduConnection(
   };
 
   const runVerify = async (): Promise<{ ok: boolean; message: string }> => {
-    if (disposed || qrActive || verifyBusy || plugin.isSyncing || plugin.nativeMaintenance)
+    if (
+      disposed ||
+      qrActive ||
+      verifyBusy ||
+      plugin.isSyncing ||
+      plugin.nativeMaintenance
+    )
       return { ok: false, message: outcome.text };
     if (!plugin.settings.baiduWebExperimental) {
       outcome = { state: "idle", text: "请先扫码登录。" };

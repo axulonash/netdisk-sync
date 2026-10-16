@@ -1,6 +1,6 @@
 import { strict as assert } from "assert";
-import { JSDOM } from "jsdom";
 import Module from "module";
+import { JSDOM } from "jsdom";
 import { renderSettingsSinglePage } from "../src/settingsSinglePage";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -80,7 +80,10 @@ describe("single-page settings assembly", () => {
     const f = fixture("s3");
     const warning = f.container.querySelector(".rsnext-service-warning");
     assert.ok(warning);
-    assert.equal(warning!.textContent, "当前配置的服务已不再支持，请重新选择服务");
+    assert.equal(
+      warning!.textContent,
+      "当前配置的服务已不再支持，请重新选择服务"
+    );
     assert.equal(f.container.querySelectorAll('[role="alert"]').length, 1);
     assert.ok(f.container.textContent!.includes("settings_basic"));
     await tick();
@@ -123,16 +126,12 @@ describe("single-page settings assembly", () => {
 // that pulls in the tab class.
 const obsidianStub = {
   Platform: { isDesktopApp: true },
-  Notice: class {
-    constructor(_message?: string) {}
-  },
+  Notice: class {},
   Modal: class {
-    constructor(_app?: any) {}
     open() {}
     close() {}
   },
   Setting: class {
-    constructor(..._args: any[]) {}
     setName() {
       return this;
     }

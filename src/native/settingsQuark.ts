@@ -2,7 +2,7 @@ import { Modal, Notice, Platform, Setting } from "obsidian";
 import QRCode from "qrcode";
 import type RemotelySavePlugin from "../main";
 import { createSettingsSection } from "../settingsLayout";
-import { QuarkQrLogin, quarkRoot, type QuarkConfig } from "./quarkAuth";
+import { type QuarkConfig, QuarkQrLogin, quarkRoot } from "./quarkAuth";
 import { QuarkClient } from "./quarkClient";
 import { getQuarkPluginTransport } from "./quarkService";
 import { QuarkError } from "./quarkTransport";

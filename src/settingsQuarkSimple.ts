@@ -1,11 +1,11 @@
 import type RemotelySavePlugin from "./main";
-import type { ConnectionState } from "./settingsFrame";
 import {
-  quarkRoot,
-  quarkOverwriteBinding,
   type QuarkConfig,
+  quarkOverwriteBinding,
+  quarkRoot,
 } from "./native/quarkAuth";
 import { QUARK_SAFE_SERVER_CODES } from "./native/quarkTransport";
+import type { ConnectionState } from "./settingsFrame";
 
 type QuarkNative = typeof import("./native/settingsQuark");
 // The QR block/module imports obsidian at load; require it lazily so the
@@ -50,7 +50,9 @@ export function renderQuarkConnection(
     desktop: boolean;
     redisplay: () => void;
     setStatus(s: ConnectionState, text: string): void;
-    setTester(t: (() => Promise<{ ok: boolean; message: string }>) | null): void;
+    setTester(
+      t: (() => Promise<{ ok: boolean; message: string }>) | null
+    ): void;
   }
 ): () => void {
   const doc = parent.ownerDocument;
@@ -170,7 +172,8 @@ export function renderQuarkConnection(
 
   function update() {
     if (disposed) return;
-    const locked = qrActive || verifyBusy || plugin.isSyncing || plugin.nativeMaintenance;
+    const locked =
+      qrActive || verifyBusy || plugin.isSyncing || plugin.nativeMaintenance;
     accountText.textContent = logged() ? "已登录" : "未登录";
     login.textContent = logged() ? "重新扫码登录" : "扫码登录";
     login.hidden = qrActive;
@@ -186,7 +189,8 @@ export function renderQuarkConnection(
         : undefined;
     status.textContent = busyText ?? outcome.text;
     if (qrActive) ctx.setStatus("testing", "正在显示二维码…");
-    else if (verifyBusy) ctx.setStatus("testing", "正在准备同步文件夹并验证读写…");
+    else if (verifyBusy)
+      ctx.setStatus("testing", "正在准备同步文件夹并验证读写…");
     else if (outcome.state === "idle" && logged() && ready())
       ctx.setStatus("success", "文件夹已准备好");
     else ctx.setStatus(outcome.state, outcome.text);
@@ -218,7 +222,7 @@ export function renderQuarkConnection(
       closeLogin = native.renderQuarkLoginBlock(qrHost, plugin, finishLogin);
     } catch (error) {
       console.warn("quark QR login failed to open", error);
-      outcome = { state: "failure", text: "无法打开扫码窗口，请重试。" };
+      outcome = { state: "failure", text: "无法显示二维码，请重试。" };
       finishLogin();
     }
   };
@@ -230,7 +234,13 @@ export function renderQuarkConnection(
   };
 
   logout.onclick = async () => {
-    if (disposed || qrActive || verifyBusy || plugin.isSyncing || plugin.nativeMaintenance)
+    if (
+      disposed ||
+      qrActive ||
+      verifyBusy ||
+      plugin.isSyncing ||
+      plugin.nativeMaintenance
+    )
       return;
     verifyBusy = true;
     plugin.nativeMaintenance = true;
@@ -252,7 +262,13 @@ export function renderQuarkConnection(
   };
 
   const runVerify = async (): Promise<{ ok: boolean; message: string }> => {
-    if (disposed || qrActive || verifyBusy || plugin.isSyncing || plugin.nativeMaintenance)
+    if (
+      disposed ||
+      qrActive ||
+      verifyBusy ||
+      plugin.isSyncing ||
+      plugin.nativeMaintenance
+    )
       return { ok: false, message: outcome.text };
     if (!plugin.settings.quarkNative?.session) {
       outcome = { state: "idle", text: "请先扫码登录。" };

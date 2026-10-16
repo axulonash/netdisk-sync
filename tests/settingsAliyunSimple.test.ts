@@ -1,12 +1,12 @@
 import { strict as assert } from "assert";
-import { JSDOM } from "jsdom";
 import Module from "module";
+import { JSDOM } from "jsdom";
+import {
+  aliyunOverwriteBinding,
+  bindAliyunSession,
+} from "../src/native/aliyunAuth";
 import { renderAliyunConnection } from "../src/settingsAliyunSimple";
 import { renderSettingsSinglePage } from "../src/settingsSinglePage";
-import {
-  bindAliyunSession,
-  aliyunOverwriteBinding,
-} from "../src/native/aliyunAuth";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -17,9 +17,7 @@ let currentDoc: Document | undefined;
 
 const obsidianStub = {
   Platform: { isDesktopApp: true },
-  Notice: class {
-    constructor(_message?: string) {}
-  },
+  Notice: class {},
   Modal: class {
     contentEl: HTMLElement;
     constructor(_app: any) {
@@ -34,7 +32,6 @@ const obsidianStub = {
     }
   },
   Setting: class {
-    constructor(..._args: any[]) {}
     setName() {
       return this;
     }
@@ -147,9 +144,7 @@ describe("Aliyun connection fragment", () => {
     const parent = dom.window.document.querySelector("main")!;
     const listeners = new Set<() => void>();
     const statuses: { state: string; text: string }[] = [];
-    let tester:
-      | (() => Promise<{ ok: boolean; message: string }>)
-      | null = null;
+    let tester: (() => Promise<{ ok: boolean; message: string }>) | null = null;
     let saves = 0;
     const plugin: any = {
       settings: {
@@ -196,7 +191,9 @@ describe("Aliyun connection fragment", () => {
 
   it("renders the QR login inline instead of a modal", async () => {
     const f = fixture();
-    (f.parent.querySelector('[data-action="login"]') as HTMLButtonElement).click();
+    (
+      f.parent.querySelector('[data-action="login"]') as HTMLButtonElement
+    ).click();
     await tick();
     await tick();
     assert.ok(
@@ -242,7 +239,9 @@ describe("Aliyun connection fragment", () => {
   it("rejects an in-flight preparation after settings change", async () => {
     const f = fixture();
     let release!: () => void;
-    const pending = new Promise<void>((resolve) => (release = resolve));
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     verifyImpl = async (config: any) => {
       await pending;
       return aliyunOverwriteBinding(config);
@@ -426,7 +425,9 @@ describe("Aliyun connection fragment", () => {
     const f = fixture();
     assert.equal(f.listeners.size, 1);
     assert.ok(f.tester());
-    (f.parent.querySelector('[data-action="login"]') as HTMLButtonElement).click();
+    (
+      f.parent.querySelector('[data-action="login"]') as HTMLButtonElement
+    ).click();
     f.cleanup();
     assert.equal(f.listeners.size, 0);
     assert.equal(blockCleanups, 1);

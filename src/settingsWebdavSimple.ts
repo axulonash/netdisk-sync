@@ -1,7 +1,7 @@
-import { resolveWebdavDirectory } from "./webdavDirectory";
 import type RemotelySavePlugin from "./main";
 import type { ConnectionState } from "./settingsFrame";
 import { webdavScope, webdavTarget } from "./syncActivity";
+import { resolveWebdavDirectory } from "./webdavDirectory";
 
 /**
  * "连接" fragment for the WebDAV single page: address/账号/密码, the inline
@@ -15,7 +15,9 @@ export function renderWebdavConnection(
     desktop: boolean;
     redisplay: () => void;
     setStatus(s: ConnectionState, text: string): void;
-    setTester(t: (() => Promise<{ ok: boolean; message: string }>) | null): void;
+    setTester(
+      t: (() => Promise<{ ok: boolean; message: string }>) | null
+    ): void;
   }
 ): () => void {
   const doc = parent.ownerDocument;

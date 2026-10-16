@@ -1,6 +1,9 @@
 import type { SUPPORTED_SERVICES_TYPE } from "./baseTypes";
 import type RemotelySavePlugin from "./main";
+import { renderAliyunConnection } from "./settingsAliyunSimple";
+import { renderBaiduConnection } from "./settingsBaiduQr";
 import { createSettingsFrame } from "./settingsFrame";
+import { renderQuarkConnection } from "./settingsQuarkSimple";
 import { createRecordsSection } from "./settingsRecords";
 import {
   renderAdvancedSection,
@@ -9,9 +12,6 @@ import {
   renderImportExportSection,
 } from "./settingsSections";
 import { renderWebdavConnection } from "./settingsWebdavSimple";
-import { renderBaiduConnection } from "./settingsBaiduQr";
-import { renderQuarkConnection } from "./settingsQuarkSimple";
-import { renderAliyunConnection } from "./settingsAliyunSimple";
 
 /** Services the single page knows how to render a connection for. */
 const NATIVE_SERVICES: SUPPORTED_SERVICES_TYPE[] = [
@@ -28,7 +28,8 @@ const loadClearDupFiles = () => {
     return (
       require("../pro/src/settingsClearDupFiles") as typeof import("../pro/src/settingsClearDupFiles")
     ).generateClearDupFilesSettingsPart;
-  } catch {
+  } catch (error) {
+    console.warn("ClearDupFiles settings part unavailable", error);
     return undefined;
   }
 };

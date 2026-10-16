@@ -10,7 +10,10 @@ import {
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
-function fixture(settings: Record<string, unknown> = {}, opts: Record<string, unknown> = {}) {
+function fixture(
+  settings: Record<string, unknown> = {},
+  opts: Record<string, unknown> = {}
+) {
   const dom = new JSDOM("<div id='host'></div>");
   const host = dom.window.document.getElementById("host")!;
   const calls: string[] = [];
@@ -39,11 +42,15 @@ function fixture(settings: Record<string, unknown> = {}, opts: Record<string, un
       calls.push("redisplay");
     },
   });
-  const rows = Array.from(host.querySelectorAll(".rsnext-row")) as HTMLElement[];
+  const rows = Array.from(
+    host.querySelectorAll(".rsnext-row")
+  ) as HTMLElement[];
   const rowFor = (key: string) =>
     rows.find((r) => r.querySelector("label")?.textContent === key);
   const buttonIn = (row: HTMLElement, text: string) =>
-    Array.from(row.querySelectorAll("button")).find((b) => b.textContent === text);
+    Array.from(row.querySelectorAll("button")).find(
+      (b) => b.textContent === text
+    );
   return { dom, host, plugin, calls, rows, rowFor, buttonIn };
 }
 
@@ -108,7 +115,9 @@ describe("renderBasicSection", () => {
     const f = fixture({ password: "old" });
     const password = f.rowFor("settings_password")!;
     f.buttonIn(password, "修改")!.click();
-    const input = password.querySelector("input[type=password]") as HTMLInputElement;
+    const input = password.querySelector(
+      "input[type=password]"
+    ) as HTMLInputElement;
     input.value = "newpass";
     input.dispatchEvent(new f.dom.window.Event("input"));
     // first confirm only reveals the second confirm; nothing persisted yet
@@ -123,14 +132,18 @@ describe("renderBasicSection", () => {
     assert.deepEqual(f.calls, ["save"]);
     assert.ok(password.textContent!.includes("modal_password_notice"));
     const encryption = f.rowFor("settings_encryptionmethod")!;
-    assert.ok(!encryption.classList.contains("settings-encryption-method-hide"));
+    assert.ok(
+      !encryption.classList.contains("settings-encryption-method-hide")
+    );
   });
 
   it("toggles the password input type via the eye control", () => {
     const f = fixture();
     const password = f.rowFor("settings_password")!;
     f.buttonIn(password, "修改")!.click();
-    const input = password.querySelector("input[type=password]") as HTMLInputElement;
+    const input = password.querySelector(
+      "input[type=password]"
+    ) as HTMLInputElement;
     const eye = password.querySelector(".rsnext-eye") as HTMLElement;
     eye.click();
     assert.equal(input.getAttribute("type"), "text");
@@ -144,14 +157,18 @@ describe("renderBasicSection", () => {
     f.buttonIn(encryption, "修改")!.click();
     const openssl = Array.from(
       encryption.querySelectorAll("input[type=radio]")
-    ).find((r) => (r as HTMLInputElement).value === "openssl-base64") as HTMLInputElement;
+    ).find(
+      (r) => (r as HTMLInputElement).value === "openssl-base64"
+    ) as HTMLInputElement;
     openssl.checked = true;
     openssl.dispatchEvent(new f.dom.window.Event("change"));
     await tick();
     // warning surfaced, but nothing persisted until confirm
     assert.equal(f.plugin.settings.encryptionMethod, "rclone-base64");
     assert.deepEqual(f.calls, []);
-    assert.ok(encryption.textContent!.includes("modal_encryptionmethod_shortdesc"));
+    assert.ok(
+      encryption.textContent!.includes("modal_encryptionmethod_shortdesc")
+    );
     f.buttonIn(encryption, "确认")!.click();
     await tick();
     assert.equal(f.plugin.settings.encryptionMethod, "openssl-base64");
@@ -164,7 +181,9 @@ describe("renderBasicSection", () => {
     f.buttonIn(encryption, "修改")!.click();
     const openssl = Array.from(
       encryption.querySelectorAll("input[type=radio]")
-    ).find((r) => (r as HTMLInputElement).value === "openssl-base64") as HTMLInputElement;
+    ).find(
+      (r) => (r as HTMLInputElement).value === "openssl-base64"
+    ) as HTMLInputElement;
     openssl.checked = true;
     openssl.dispatchEvent(new f.dom.window.Event("change"));
     await tick();
@@ -173,14 +192,30 @@ describe("renderBasicSection", () => {
   });
 
   it("hides the automation rows unless enabled and not advanced-only", () => {
-    assert.equal(fixture({}, { showAutomation: false }).rowFor("settings_autorun"), undefined);
-    assert.ok(fixture({}, { showAutomation: true, advancedOnly: false }).rowFor("settings_autorun"));
-    assert.equal(fixture({}, { showAutomation: true, advancedOnly: true }).rowFor("settings_autorun"), undefined);
+    assert.equal(
+      fixture({}, { showAutomation: false }).rowFor("settings_autorun"),
+      undefined
+    );
+    assert.ok(
+      fixture({}, { showAutomation: true, advancedOnly: false }).rowFor(
+        "settings_autorun"
+      )
+    );
+    assert.equal(
+      fixture({}, { showAutomation: true, advancedOnly: true }).rowFor(
+        "settings_autorun"
+      ),
+      undefined
+    );
   });
 
   it("hides the encryption-method row when no password is set", () => {
     const f = fixture();
-    assert.ok(f.rowFor("settings_encryptionmethod")!.classList.contains("settings-encryption-method-hide"));
+    assert.ok(
+      f
+        .rowFor("settings_encryptionmethod")!
+        .classList.contains("settings-encryption-method-hide")
+    );
   });
 });
 
@@ -213,11 +248,15 @@ function advancedFixture(
       | ((el: HTMLElement) => void)
       | undefined,
   });
-  const rows = Array.from(host.querySelectorAll(".rsnext-row")) as HTMLElement[];
+  const rows = Array.from(
+    host.querySelectorAll(".rsnext-row")
+  ) as HTMLElement[];
   const rowFor = (key: string) =>
     rows.find((r) => r.querySelector("label")?.textContent === key);
   const buttonIn = (row: HTMLElement, text: string) =>
-    Array.from(row.querySelectorAll("button")).find((b) => b.textContent === text);
+    Array.from(row.querySelectorAll("button")).find(
+      (b) => b.textContent === text
+    );
   return { dom, host, plugin, calls, rows, rowFor, buttonIn };
 }
 
@@ -313,9 +352,12 @@ describe("renderAdvancedSection", () => {
   });
 
   it("absorbs the remaining advanced rows for the single page", () => {
-    const f = advancedFixture({}, {
-      renderClearDupFiles: (el: HTMLElement) => el.append("CLEARDUP"),
-    });
+    const f = advancedFixture(
+      {},
+      {
+        renderClearDupFiles: (el: HTMLElement) => el.append("CLEARDUP"),
+      }
+    );
     for (const key of [
       "settings_skiplargefiles",
       "settings_enablestatusbar_info",
@@ -405,7 +447,9 @@ function importExportFixture() {
     saveSettings: async () => {},
   };
   renderImportExportSection(host, plugin);
-  const rows = Array.from(host.querySelectorAll(".rsnext-row")) as HTMLElement[];
+  const rows = Array.from(
+    host.querySelectorAll(".rsnext-row")
+  ) as HTMLElement[];
   const rowFor = (key: string) =>
     rows.find((r) => r.querySelector("label")?.textContent === key);
   const buttonIn = (row: HTMLElement, text: string) =>
@@ -507,7 +551,9 @@ function debugFixture(settings: Record<string, unknown> = {}) {
     unload: () => {},
   };
   renderDebugSection(host, plugin);
-  const rows = Array.from(host.querySelectorAll(".rsnext-row")) as HTMLElement[];
+  const rows = Array.from(
+    host.querySelectorAll(".rsnext-row")
+  ) as HTMLElement[];
   const rowFor = (key: string) =>
     rows.find((r) => r.querySelector("label")?.textContent === key);
   const buttonIn = (row: HTMLElement, text: string) =>
@@ -537,7 +583,14 @@ describe("renderDebugSection", () => {
     ]) {
       assert.ok(f.rowFor(key), `missing row ${key}`);
     }
-    assert.ok(f.buttonIn(f.rowFor("settings_resetcache")!, "settings_resetcache_button"));
-    assert.ok(f.buttonIn(f.rowFor("settings_syncplans")!, "settings_syncplans_button_all"));
+    assert.ok(
+      f.buttonIn(f.rowFor("settings_resetcache")!, "settings_resetcache_button")
+    );
+    assert.ok(
+      f.buttonIn(
+        f.rowFor("settings_syncplans")!,
+        "settings_syncplans_button_all"
+      )
+    );
   });
 });

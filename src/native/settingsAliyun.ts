@@ -2,7 +2,7 @@ import { Notice } from "obsidian";
 import QRCode from "qrcode";
 import type RemotelySavePlugin from "../main";
 import { createSettingsSection } from "../settingsLayout";
-import { AliyunQrLogin, aliyunRoot, type AliyunConfig } from "./aliyunAuth";
+import { type AliyunConfig, AliyunQrLogin, aliyunRoot } from "./aliyunAuth";
 import { AliyunClient } from "./aliyunClient";
 import { getAliyunPluginTransport } from "./aliyunService";
 import { AliyunError } from "./aliyunTransport";

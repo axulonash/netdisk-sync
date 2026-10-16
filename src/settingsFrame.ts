@@ -1,8 +1,8 @@
 import type { SUPPORTED_SERVICES_TYPE } from "./baseTypes";
-import { createSettingsSection } from "./settingsLayout";
-import { createSyncProgress } from "./syncProgressUi";
-import { createSyncControls } from "./syncControlsUi";
 import type RemotelySavePlugin from "./main";
+import { createSettingsSection } from "./settingsLayout";
+import { createSyncControls } from "./syncControlsUi";
+import { createSyncProgress } from "./syncProgressUi";
 
 export type ConnectionState = "idle" | "testing" | "success" | "failure";
 
@@ -13,9 +13,7 @@ export interface SettingsFrame {
   >;
   progressHost: HTMLElement;
   setStatus(state: ConnectionState, text: string): void;
-  setTester(
-    t: (() => Promise<{ ok: boolean; message: string }>) | null
-  ): void;
+  setTester(t: (() => Promise<{ ok: boolean; message: string }>) | null): void;
   onServiceChange(cb: (s: SUPPORTED_SERVICES_TYPE) => void): void;
   cleanup(): void;
 }
@@ -94,7 +92,10 @@ export function createSettingsFrame(
   const sync = el("button", "立即同步", "mod-cta");
   sync.type = "button";
   progressHost.append(progressStatus, sync);
-  const updateProgress = createSyncProgress(progressStatus, () => plugin.syncUiActivity);
+  const updateProgress = createSyncProgress(
+    progressStatus,
+    () => plugin.syncUiActivity
+  );
   const updateSyncControls = createSyncControls(sync, plugin);
   root.append(progressHost);
 
@@ -104,6 +105,9 @@ export function createSettingsFrame(
     advanced: createSettingsSection(root, "高级"),
     records: createSettingsSection(root, "同步记录"),
   };
+  // spec §2: 连接 and 基本 are expanded by default; 高级 and 同步记录 stay collapsed.
+  (sections.connection.parentElement as HTMLDetailsElement).open = true;
+  (sections.basic.parentElement as HTMLDetailsElement).open = true;
 
   let disposed = false;
   let tester: (() => Promise<{ ok: boolean; message: string }>) | null = null;
