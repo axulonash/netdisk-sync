@@ -7,10 +7,12 @@ import { createSyncProgress } from "./syncProgressUi";
 export type ConnectionState = "idle" | "testing" | "success" | "failure";
 
 export interface SettingsFrame {
-  sections: Record<
-    "connection" | "basic" | "advanced" | "records",
-    HTMLDivElement
-  >;
+  sections: {
+    connection: HTMLDivElement;
+    basic?: HTMLDivElement;
+    advanced: HTMLDivElement;
+    records: HTMLDivElement;
+  };
   progressHost: HTMLElement;
   setStatus(state: ConnectionState, text: string): void;
   setTester(t: (() => Promise<{ ok: boolean; message: string }>) | null): void;
@@ -32,6 +34,7 @@ export function createSettingsFrame(
   opts: {
     desktop: boolean;
     unsupported: boolean;
+    showBasic: boolean;
     onServiceChange: (s: SUPPORTED_SERVICES_TYPE) => void;
   }
 ): SettingsFrame {
@@ -99,15 +102,20 @@ export function createSettingsFrame(
   const updateSyncControls = createSyncControls(sync, plugin);
   root.append(progressHost);
 
-  const sections = {
-    connection: createSettingsSection(root, "连接"),
-    basic: createSettingsSection(root, "基本"),
-    advanced: createSettingsSection(root, "高级"),
-    records: createSettingsSection(root, "同步记录"),
-  };
+  // createSettingsSection appends in call order: 基本 is skipped (not created)
+  // for the netdisk services whose basic section is empty.
+  const connection = createSettingsSection(root, "连接");
+  const basic = opts.showBasic
+    ? createSettingsSection(root, "基本")
+    : undefined;
+  const advanced = createSettingsSection(root, "高级");
+  const records = createSettingsSection(root, "同步记录");
+  const sections = { connection, basic, advanced, records };
   // spec §2: 连接 and 基本 are expanded by default; 高级 and 同步记录 stay collapsed.
   (sections.connection.parentElement as HTMLDetailsElement).open = true;
-  (sections.basic.parentElement as HTMLDetailsElement).open = true;
+  if (sections.basic) {
+    (sections.basic.parentElement as HTMLDetailsElement).open = true;
+  }
 
   let disposed = false;
   let tester: (() => Promise<{ ok: boolean; message: string }>) | null = null;

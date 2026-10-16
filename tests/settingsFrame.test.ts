@@ -5,7 +5,7 @@ import { createSettingsFrame } from "../src/settingsFrame";
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 function fixture(
-  opts: Partial<{ desktop: boolean; unsupported: boolean }> = {}
+  opts: Partial<{ desktop: boolean; unsupported: boolean; showBasic: boolean }> = {}
 ) {
   const dom = new JSDOM("<main></main>");
   const container = dom.window.document.querySelector("main")!;
@@ -26,6 +26,7 @@ function fixture(
   const frame = createSettingsFrame(container, plugin, {
     desktop: opts.desktop ?? true,
     unsupported: opts.unsupported ?? false,
+    showBasic: opts.showBasic ?? true,
     onServiceChange: (s) => changes.push(s),
   });
   const select = container.querySelector("select")!;
@@ -79,6 +80,20 @@ describe("Settings frame skeleton", () => {
       details.map((d) => d.open),
       [true, true, false, false]
     );
+  });
+
+  it("omits 基本 and keeps 高级 collapsed when showBasic is false", () => {
+    const { container, frame } = fixture({ showBasic: false });
+    const details = Array.from(container.querySelectorAll("details"));
+    assert.deepEqual(
+      details.map((d) => d.querySelector("summary")!.textContent),
+      ["连接", "高级", "同步记录"]
+    );
+    assert.deepEqual(
+      details.map((d) => d.open),
+      [true, false, false]
+    );
+    assert.equal(frame.sections.basic, undefined);
   });
 
   it("warns and clears selection when the service is unsupported", () => {

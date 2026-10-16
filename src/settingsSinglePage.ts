@@ -55,6 +55,9 @@ export function renderSettingsSinglePage(
     const frame = createSettingsFrame(containerEl, plugin, {
       desktop,
       unsupported: !NATIVE_SERVICES.includes(plugin.settings.serviceType),
+      // 基本 holds only the webdav automation rows now, so it is skipped for
+      // the netdisk services (their page shows 连接 → 高级 → 同步记录).
+      showBasic: plugin.settings.serviceType === "webdav",
       onServiceChange: (s) => {
         plugin.settings.serviceType = s;
         void Promise.resolve(plugin.saveSettings())
@@ -102,17 +105,14 @@ export function renderSettingsSinglePage(
       );
     }
 
-    renderBasicSection(frame.sections.basic, plugin, {
-      advancedOnly: false,
-      showAutomation: plugin.settings.serviceType === "webdav",
-      redisplay,
-    });
+    // password + encryption rows now live inside 高级 (renderAdvancedSection)
+    if (frame.sections.basic) {
+      renderBasicSection(frame.sections.basic, plugin);
+    }
 
     const generateClearDupFiles = loadClearDupFiles();
     renderAdvancedSection(frame.sections.advanced, plugin, {
       desktop,
-      redisplay,
-      advancedOnly: false,
       renderClearDupFiles: generateClearDupFiles
         ? (el) =>
             generateClearDupFiles(

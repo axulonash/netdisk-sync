@@ -116,19 +116,14 @@ const loadImportExport = () =>
   require("./importExport") as typeof import("./importExport");
 
 /**
- * Native "基本" section shared by the legacy tab (single source of truth until
- * renderLegacy is removed). The password block carries the legacy PasswordModal
- * copy (shortdesc + attn1-5 + second confirm + saved notice) and the encryption
- * block carries the legacy EncryptionMethodModal copy, all inline: no modals.
+ * Native "基本" section: only the webdav automation rows (autorun, run-once,
+ * sync-on-save). The password + encryption-method rows moved to 高级 (see
+ * renderAdvancedSection), so a service whose 基本 held just those two rows
+ * (baidu, quark, aliyun) no longer renders a 基本 section at all.
  */
 export function renderBasicSection(
   el: HTMLElement,
-  plugin: RemotelySavePlugin,
-  opts: {
-    advancedOnly: boolean;
-    showAutomation: boolean;
-    redisplay: () => void;
-  }
+  plugin: RemotelySavePlugin
 ): void {
   const doc = el.ownerDocument;
   const t = (key: TransItemType, vars?: Record<string, string>) =>
@@ -142,11 +137,6 @@ export function renderBasicSection(
     n.textContent = text;
     n.className = cls;
     return n;
-  };
-  const fragment = (html: string) => {
-    const tpl = doc.createElement("template");
-    tpl.innerHTML = html;
-    return tpl.content;
   };
 
   el.append(node("h2", t("settings_basic")));
@@ -166,148 +156,6 @@ export function renderBasicSection(
     el.append(box);
     return { box, inline };
   };
-
-  const eyeToggle = (input: HTMLInputElement) => {
-    const eye = node("button", "", "rsnext-eye");
-    eye.type = "button";
-    eye.innerHTML = EYE_OFF_SVG;
-    eye.setAttribute("aria-label", "显示密码");
-    eye.onclick = () => {
-      const isText = input.getAttribute("type") === "text";
-      eye.innerHTML = isText ? EYE_OFF_SVG : EYE_SVG;
-      eye.setAttribute("aria-label", isText ? "显示密码" : "隐藏密码");
-      input.setAttribute("type", isText ? "password" : "text");
-      input.focus();
-    };
-    return eye;
-  };
-
-  const passwordWarning = () => {
-    const box = node("div", "", "rsnext-inline-notice");
-    for (const line of t("modal_password_shortdesc").split("\n")) {
-      box.append(node("p", line));
-    }
-    (
-      [
-        "modal_password_attn1",
-        "modal_password_attn2",
-        "modal_password_attn3",
-        "modal_password_attn4",
-        "modal_password_attn5",
-      ] as TransItemType[]
-    ).forEach((key, idx) =>
-      box.append(node("p", t(key), idx < 3 ? "password-disclaimer" : ""))
-    );
-    return box;
-  };
-
-  // password row: a 修改 button opens an inline input + warnings + two-step confirm
-  let newPassword = `${plugin.settings.password}`;
-  const editPassword = node("button", "修改");
-  const password = row(
-    t("settings_password"),
-    editPassword,
-    t("settings_password_desc")
-  );
-  editPassword.onclick = () =>
-    openInlineExclusive(password.inline, (host) => {
-      newPassword = `${plugin.settings.password}`;
-      const input = doc.createElement("input");
-      input.type = "password";
-      input.value = newPassword;
-      input.oninput = () => {
-        newPassword = input.value.trim();
-      };
-      const warnings = passwordWarning();
-      const notice = node("p", "", "rsnext-inline-notice");
-      notice.hidden = true;
-      const confirm = node("button", "确认");
-      const second = node(
-        "button",
-        t("modal_password_secondconfirm"),
-        "password-second-confirm"
-      );
-      second.hidden = true;
-      confirm.onclick = () => {
-        confirm.hidden = true;
-        second.hidden = false;
-      };
-      second.onclick = async () => {
-        plugin.settings.password = newPassword;
-        // persist first: the dependent encryption-method visibility changes after
-        await plugin.saveSettings();
-        encryption.box.classList.toggle(
-          "settings-encryption-method-hide",
-          newPassword === ""
-        );
-        notice.textContent = t("modal_password_notice");
-        notice.hidden = false;
-      };
-      host.append(input, eyeToggle(input), warnings, notice, confirm, second);
-      input.focus();
-    });
-
-  // encryption-method row: a 修改 button opens an inline radio block
-  const editEncryption = node("button", "修改");
-  const encryption = row(
-    t("settings_encryptionmethod"),
-    editEncryption,
-    fragment(t("settings_encryptionmethod_desc"))
-  );
-  if (plugin.settings.password === "") {
-    encryption.box.classList.add("settings-encryption-method-hide");
-  }
-  editEncryption.onclick = () =>
-    openInlineExclusive(encryption.inline, (host) => {
-      const current = plugin.settings.encryptionMethod ?? "rclone-base64";
-      let pending: CipherMethodType = current;
-      // legacy EncryptionMethodModal copy, surfaced inline only when a password
-      // is set (changing the method then risks orphaning remote files)
-      const warning = node("div", "", "rsnext-inline-notice");
-      warning.hidden = true;
-      warning.append(node("h3", t("modal_encryptionmethod_title")));
-      for (const line of t("modal_encryptionmethod_shortdesc").split("\n")) {
-        const para = node("p");
-        para.append(fragment(line));
-        warning.append(para);
-      }
-      const confirm = node("button", "确认");
-      confirm.hidden = true;
-      const commit = async () => {
-        plugin.settings.encryptionMethod = pending;
-        await plugin.saveSettings();
-      };
-      for (const [value, key] of [
-        ["rclone-base64", "settings_encryptionmethod_rclone"],
-        ["openssl-base64", "settings_encryptionmethod_openssl"],
-      ] as [CipherMethodType, TransItemType][]) {
-        const label = doc.createElement("label");
-        const radio = doc.createElement("input");
-        radio.type = "radio";
-        radio.name = "rsnext-encryption-method";
-        radio.value = value;
-        radio.checked = value === current;
-        radio.onchange = async () => {
-          pending = value;
-          if (plugin.settings.password === "") {
-            await commit();
-            return;
-          }
-          warning.hidden = false;
-          confirm.hidden = false;
-        };
-        label.append(radio, doc.createTextNode(t(key)));
-        host.append(label);
-      }
-      confirm.onclick = async () => {
-        await commit();
-        warning.hidden = true;
-        confirm.hidden = true;
-      };
-      host.append(warning, confirm);
-    });
-
-  if (opts.advancedOnly || !opts.showAutomation) return;
 
   const autorun = node("select");
   for (const [value, key] of [
@@ -387,10 +235,11 @@ export function renderBasicSection(
 
 /**
  * Native advanced-section content shared by the legacy tab (single source of
- * truth until renderLegacy is removed): the whole 高级 area — skip-large-files,
- * status-bar helpers, ignore/allowed paths, sync-config-dir, concurrency,
- * underscore/bookmarks/delete/conflict options, ClearDupFiles (pro, injected so
- * this module stays obsidian-free), modify-protection percentage and the mobile
+ * truth until renderLegacy is removed): the whole 高级 area — the password and
+ * encryption-method rows moved out of 基本, skip-large-files, status-bar
+ * helpers, ignore/allowed paths, sync-config-dir, concurrency,
+ * underscore/bookmarks/delete options, ClearDupFiles (pro, injected so this
+ * module stays obsidian-free), modify-protection percentage and the mobile
  * status-bar toggle. The config-dir row carries the legacy SyncConfigDirModal
  * copy inline (attn + second-confirm / go-back in place).
  */
@@ -399,14 +248,158 @@ export function renderAdvancedSection(
   plugin: RemotelySavePlugin,
   opts: {
     desktop: boolean;
-    redisplay: () => void;
-    advancedOnly?: boolean;
     renderClearDupFiles?: (el: HTMLElement) => void;
   }
 ): void {
   const doc = el.ownerDocument;
   const t = (key: TransItemType, vars?: Record<string, string>) =>
     plugin.i18n.t(key, vars);
+
+  // The password block carries the legacy PasswordModal copy (shortdesc +
+  // attn1-5 + second confirm + saved notice) and the encryption block carries
+  // the legacy EncryptionMethodModal copy, all inline: no modals.
+  const eyeToggle = (input: HTMLInputElement) => {
+    const eye = node(doc, "button", "", "rsnext-eye");
+    eye.type = "button";
+    eye.innerHTML = EYE_OFF_SVG;
+    eye.setAttribute("aria-label", "显示密码");
+    eye.onclick = () => {
+      const isText = input.getAttribute("type") === "text";
+      eye.innerHTML = isText ? EYE_OFF_SVG : EYE_SVG;
+      eye.setAttribute("aria-label", isText ? "显示密码" : "隐藏密码");
+      input.setAttribute("type", isText ? "password" : "text");
+      input.focus();
+    };
+    return eye;
+  };
+
+  const passwordWarning = () => {
+    const box = node(doc, "div", "", "rsnext-inline-notice");
+    for (const line of t("modal_password_shortdesc").split("\n")) {
+      box.append(node(doc, "p", line));
+    }
+    (
+      [
+        "modal_password_attn1",
+        "modal_password_attn2",
+        "modal_password_attn3",
+        "modal_password_attn4",
+        "modal_password_attn5",
+      ] as TransItemType[]
+    ).forEach((key, idx) =>
+      box.append(node(doc, "p", t(key), idx < 3 ? "password-disclaimer" : ""))
+    );
+    return box;
+  };
+
+  // password row: a 修改 button opens an inline input + warnings + two-step confirm
+  let newPassword = `${plugin.settings.password}`;
+  const editPassword = node(doc, "button", "修改");
+  const password = appendRow(
+    el,
+    t("settings_password"),
+    editPassword,
+    t("settings_password_desc")
+  );
+  editPassword.onclick = () =>
+    openInlineExclusive(password.inline, (host) => {
+      newPassword = `${plugin.settings.password}`;
+      const input = doc.createElement("input");
+      input.type = "password";
+      input.value = newPassword;
+      input.oninput = () => {
+        newPassword = input.value.trim();
+      };
+      const warnings = passwordWarning();
+      const notice = node(doc, "p", "", "rsnext-inline-notice");
+      notice.hidden = true;
+      const confirm = node(doc, "button", "确认");
+      const second = node(
+        doc,
+        "button",
+        t("modal_password_secondconfirm"),
+        "password-second-confirm"
+      );
+      second.hidden = true;
+      confirm.onclick = () => {
+        confirm.hidden = true;
+        second.hidden = false;
+      };
+      second.onclick = async () => {
+        plugin.settings.password = newPassword;
+        // persist first: the dependent encryption-method visibility changes after
+        await plugin.saveSettings();
+        encryption.box.classList.toggle(
+          "settings-encryption-method-hide",
+          newPassword === ""
+        );
+        notice.textContent = t("modal_password_notice");
+        notice.hidden = false;
+      };
+      host.append(input, eyeToggle(input), warnings, notice, confirm, second);
+      input.focus();
+    });
+
+  // encryption-method row: a 修改 button opens an inline radio block
+  const editEncryption = node(doc, "button", "修改");
+  const encryption = appendRow(
+    el,
+    t("settings_encryptionmethod"),
+    editEncryption,
+    fragment(doc, t("settings_encryptionmethod_desc"))
+  );
+  if (plugin.settings.password === "") {
+    encryption.box.classList.add("settings-encryption-method-hide");
+  }
+  editEncryption.onclick = () =>
+    openInlineExclusive(encryption.inline, (host) => {
+      const current = plugin.settings.encryptionMethod ?? "rclone-base64";
+      let pending: CipherMethodType = current;
+      // legacy EncryptionMethodModal copy, surfaced inline only when a password
+      // is set (changing the method then risks orphaning remote files)
+      const warning = node(doc, "div", "", "rsnext-inline-notice");
+      warning.hidden = true;
+      warning.append(node(doc, "h3", t("modal_encryptionmethod_title")));
+      for (const line of t("modal_encryptionmethod_shortdesc").split("\n")) {
+        const para = node(doc, "p");
+        para.append(fragment(doc, line));
+        warning.append(para);
+      }
+      const confirm = node(doc, "button", "确认");
+      confirm.hidden = true;
+      const commit = async () => {
+        plugin.settings.encryptionMethod = pending;
+        await plugin.saveSettings();
+      };
+      for (const [value, key] of [
+        ["rclone-base64", "settings_encryptionmethod_rclone"],
+        ["openssl-base64", "settings_encryptionmethod_openssl"],
+      ] as [CipherMethodType, TransItemType][]) {
+        const label = doc.createElement("label");
+        const radio = doc.createElement("input");
+        radio.type = "radio";
+        radio.name = "rsnext-encryption-method";
+        radio.value = value;
+        radio.checked = value === current;
+        radio.onchange = async () => {
+          pending = value;
+          if (plugin.settings.password === "") {
+            await commit();
+            return;
+          }
+          warning.hidden = false;
+          confirm.hidden = false;
+        };
+        label.append(radio, doc.createTextNode(t(key)));
+        host.append(label);
+      }
+      confirm.onclick = async () => {
+        await commit();
+        warning.hidden = true;
+        confirm.hidden = true;
+      };
+      host.append(warning, confirm);
+    });
 
   const skipOptions: [string, string][] = [
     ["-1", t("settings_skiplargefiles_notset")],
@@ -659,7 +652,6 @@ export function renderAdvancedSection(
     }),
     fragment(doc, conflictDesc())
   );
-  conflict.box.hidden = opts.advancedOnly === true;
 
   // pro ClearDupFiles row (a kept feature, not a removable service)
   opts.renderClearDupFiles?.(el);

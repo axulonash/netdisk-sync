@@ -10,10 +10,7 @@ import {
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
-function fixture(
-  settings: Record<string, unknown> = {},
-  opts: Record<string, unknown> = {}
-) {
+function fixture(settings: Record<string, unknown> = {}) {
   const dom = new JSDOM("<div id='host'></div>");
   const host = dom.window.document.getElementById("host")!;
   const calls: string[] = [];
@@ -35,13 +32,7 @@ function fixture(
     registerInterval: () => {},
     toggleSyncOnSaveIfSet: () => {},
   };
-  renderBasicSection(host, plugin, {
-    advancedOnly: opts.advancedOnly === true,
-    showAutomation: opts.showAutomation !== false,
-    redisplay: () => {
-      calls.push("redisplay");
-    },
-  });
+  renderBasicSection(host, plugin);
   const rows = Array.from(
     host.querySelectorAll(".rsnext-row")
   ) as HTMLElement[];
@@ -76,146 +67,30 @@ describe("openInlineExclusive", () => {
 });
 
 describe("renderBasicSection", () => {
-  it("renders the password and encryption-method rows with their i18n labels", () => {
+  it("renders the webdav automation rows with their i18n labels", () => {
     const f = fixture();
     assert.ok(f.host.textContent!.includes("settings_basic"));
-    assert.ok(f.rowFor("settings_password"));
-    assert.ok(f.rowFor("settings_encryptionmethod"));
+    assert.ok(f.rowFor("settings_autorun"));
+    assert.ok(f.rowFor("settings_runoncestartup"));
+    assert.ok(f.rowFor("settings_synconsave"));
   });
 
-  it("keeps only one inline editor open at a time", () => {
+  it("no longer renders the password or encryption-method rows", () => {
     const f = fixture();
-    const password = f.rowFor("settings_password")!;
-    const encryption = f.rowFor("settings_encryptionmethod")!;
-    f.buttonIn(password, "修改")!.click();
-    assert.ok(password.querySelector("input[type=password]"));
-    f.buttonIn(encryption, "修改")!.click();
-    assert.equal(password.querySelector("input[type=password]"), null);
-    assert.ok(encryption.querySelector("input[type=radio]"));
+    assert.equal(f.rowFor("settings_password"), undefined);
+    assert.equal(f.rowFor("settings_encryptionmethod"), undefined);
   });
 
-  it("renders the password warnings before the confirm button", () => {
+  it("persists a sync-on-save change", async () => {
     const f = fixture();
-    const password = f.rowFor("settings_password")!;
-    f.buttonIn(password, "修改")!.click();
-    const text = password.textContent!;
-    assert.ok(text.includes("modal_password_shortdesc"));
-    for (let i = 1; i <= 5; i++) {
-      assert.ok(text.includes(`modal_password_attn${i}`), `missing attn${i}`);
-    }
-    const firstWarning = password.querySelector("p")!;
-    const confirm = f.buttonIn(password, "确认")!;
-    assert.ok(
-      firstWarning.compareDocumentPosition(confirm) &
-        f.dom.window.Node.DOCUMENT_POSITION_FOLLOWING
-    );
-  });
-
-  it("requires confirm then second-confirm before saving the password", async () => {
-    const f = fixture({ password: "old" });
-    const password = f.rowFor("settings_password")!;
-    f.buttonIn(password, "修改")!.click();
-    const input = password.querySelector(
-      "input[type=password]"
-    ) as HTMLInputElement;
-    input.value = "newpass";
-    input.dispatchEvent(new f.dom.window.Event("input"));
-    // first confirm only reveals the second confirm; nothing persisted yet
-    f.buttonIn(password, "确认")!.click();
+    const synconsave = f
+      .rowFor("settings_synconsave")!
+      .querySelector("select") as HTMLSelectElement;
+    synconsave.value = "1000";
+    synconsave.dispatchEvent(new f.dom.window.Event("change"));
     await tick();
-    assert.equal(f.plugin.settings.password, "old");
-    assert.deepEqual(f.calls, []);
-    // second confirm persists and updates dependent visibility
-    f.buttonIn(password, "modal_password_secondconfirm")!.click();
-    await tick();
-    assert.equal(f.plugin.settings.password, "newpass");
+    assert.equal(f.plugin.settings.syncOnSaveAfterMilliseconds, 1000);
     assert.deepEqual(f.calls, ["save"]);
-    assert.ok(password.textContent!.includes("modal_password_notice"));
-    const encryption = f.rowFor("settings_encryptionmethod")!;
-    assert.ok(
-      !encryption.classList.contains("settings-encryption-method-hide")
-    );
-  });
-
-  it("toggles the password input type via the eye control", () => {
-    const f = fixture();
-    const password = f.rowFor("settings_password")!;
-    f.buttonIn(password, "修改")!.click();
-    const input = password.querySelector(
-      "input[type=password]"
-    ) as HTMLInputElement;
-    const eye = password.querySelector(".rsnext-eye") as HTMLElement;
-    eye.click();
-    assert.equal(input.getAttribute("type"), "text");
-    eye.click();
-    assert.equal(input.getAttribute("type"), "password");
-  });
-
-  it("shows the encryption-method warning and needs confirm when a password is set", async () => {
-    const f = fixture({ password: "secret" });
-    const encryption = f.rowFor("settings_encryptionmethod")!;
-    f.buttonIn(encryption, "修改")!.click();
-    const openssl = Array.from(
-      encryption.querySelectorAll("input[type=radio]")
-    ).find(
-      (r) => (r as HTMLInputElement).value === "openssl-base64"
-    ) as HTMLInputElement;
-    openssl.checked = true;
-    openssl.dispatchEvent(new f.dom.window.Event("change"));
-    await tick();
-    // warning surfaced, but nothing persisted until confirm
-    assert.equal(f.plugin.settings.encryptionMethod, "rclone-base64");
-    assert.deepEqual(f.calls, []);
-    assert.ok(
-      encryption.textContent!.includes("modal_encryptionmethod_shortdesc")
-    );
-    f.buttonIn(encryption, "确认")!.click();
-    await tick();
-    assert.equal(f.plugin.settings.encryptionMethod, "openssl-base64");
-    assert.deepEqual(f.calls, ["save"]);
-  });
-
-  it("saves an encryption-method change directly when no password is set", async () => {
-    const f = fixture();
-    const encryption = f.rowFor("settings_encryptionmethod")!;
-    f.buttonIn(encryption, "修改")!.click();
-    const openssl = Array.from(
-      encryption.querySelectorAll("input[type=radio]")
-    ).find(
-      (r) => (r as HTMLInputElement).value === "openssl-base64"
-    ) as HTMLInputElement;
-    openssl.checked = true;
-    openssl.dispatchEvent(new f.dom.window.Event("change"));
-    await tick();
-    assert.equal(f.plugin.settings.encryptionMethod, "openssl-base64");
-    assert.deepEqual(f.calls, ["save"]);
-  });
-
-  it("hides the automation rows unless enabled and not advanced-only", () => {
-    assert.equal(
-      fixture({}, { showAutomation: false }).rowFor("settings_autorun"),
-      undefined
-    );
-    assert.ok(
-      fixture({}, { showAutomation: true, advancedOnly: false }).rowFor(
-        "settings_autorun"
-      )
-    );
-    assert.equal(
-      fixture({}, { showAutomation: true, advancedOnly: true }).rowFor(
-        "settings_autorun"
-      ),
-      undefined
-    );
-  });
-
-  it("hides the encryption-method row when no password is set", () => {
-    const f = fixture();
-    assert.ok(
-      f
-        .rowFor("settings_encryptionmethod")!
-        .classList.contains("settings-encryption-method-hide")
-    );
   });
 });
 
@@ -228,6 +103,8 @@ function advancedFixture(
   const calls: string[] = [];
   const plugin: any = {
     settings: {
+      password: "",
+      encryptionMethod: "rclone-base64",
       ignorePaths: [],
       syncConfigDir: false,
       ...settings,
@@ -240,10 +117,6 @@ function advancedFixture(
   };
   renderAdvancedSection(host, plugin, {
     desktop: opts.desktop !== false,
-    redisplay: () => {
-      calls.push("redisplay");
-    },
-    advancedOnly: opts.advancedOnly === true,
     renderClearDupFiles: opts.renderClearDupFiles as
       | ((el: HTMLElement) => void)
       | undefined,
@@ -311,44 +184,130 @@ describe("renderAdvancedSection", () => {
     assert.ok(!row.textContent!.includes("modal_syncconfig_notice"));
   });
 
-  it("keeps only one inline editor open across basic and advanced sections", async () => {
-    const dom = new JSDOM("<div id='basic'></div><div id='adv'></div>");
-    const basic = dom.window.document.getElementById("basic")!;
-    const adv = dom.window.document.getElementById("adv")!;
-    const plugin: any = {
-      settings: {
-        password: "",
-        encryptionMethod: "rclone-base64",
-        ignorePaths: [],
-        syncConfigDir: false,
-      },
-      app: { vault: { configDir: ".obsidian" } },
-      i18n: { t: (key: string) => key },
-      saveSettings: async () => {},
-    };
-    renderBasicSection(basic, plugin, {
-      advancedOnly: false,
-      showAutomation: true,
-      redisplay: () => {},
-    });
-    renderAdvancedSection(adv, plugin, { desktop: true, redisplay: () => {} });
-    const rowIn = (root: HTMLElement, key: string) =>
-      Array.from(root.querySelectorAll(".rsnext-row")).find(
-        (r) => r.querySelector("label")?.textContent === key
-      ) as HTMLElement;
-    const password = rowIn(basic, "settings_password");
-    Array.from(password.querySelectorAll("button"))
-      .find((b) => b.textContent === "修改")!
-      .click();
+  it("keeps only one inline editor open inside 高级 (password vs config-dir)", () => {
+    const f = advancedFixture();
+    const password = f.rowFor("settings_password")!;
+    f.buttonIn(password, "修改")!.click();
     assert.ok(password.querySelector("input[type=password]"));
 
-    const configDir = rowIn(adv, "settings_configdir");
+    const configDir = f.rowFor("settings_configdir")!;
     const select = configDir.querySelector("select") as HTMLSelectElement;
     select.value = "enable";
-    select.dispatchEvent(new dom.window.Event("change"));
-    // opening the advanced inline block closed the password one
+    select.dispatchEvent(new f.dom.window.Event("change"));
+    // opening the config-dir inline block closed the password one
     assert.equal(password.querySelector("input[type=password]"), null);
     assert.ok(configDir.textContent!.includes("modal_syncconfig_attn"));
+  });
+
+  it("places the moved password + encryption rows at the top of 高级", () => {
+    const f = advancedFixture();
+    assert.equal(
+      f.rows[0].querySelector("label")?.textContent,
+      "settings_password"
+    );
+    assert.equal(
+      f.rows[1].querySelector("label")?.textContent,
+      "settings_encryptionmethod"
+    );
+    assert.equal(
+      f.rows[2].querySelector("label")?.textContent,
+      "settings_skiplargefiles"
+    );
+  });
+
+  it("renders the moved password row with its warnings and two-step confirm", async () => {
+    const f = advancedFixture({ password: "old" });
+    const password = f.rowFor("settings_password")!;
+    f.buttonIn(password, "修改")!.click();
+    const text = password.textContent!;
+    assert.ok(text.includes("modal_password_shortdesc"));
+    for (let i = 1; i <= 5; i++) {
+      assert.ok(text.includes(`modal_password_attn${i}`), `missing attn${i}`);
+    }
+    const input = password.querySelector(
+      "input[type=password]"
+    ) as HTMLInputElement;
+    input.value = "newpass";
+    input.dispatchEvent(new f.dom.window.Event("input"));
+    // first confirm only reveals the second confirm; nothing persisted yet
+    f.buttonIn(password, "确认")!.click();
+    await tick();
+    assert.equal(f.plugin.settings.password, "old");
+    assert.deepEqual(f.calls, []);
+    // second confirm persists and updates the dependent visibility
+    f.buttonIn(password, "modal_password_secondconfirm")!.click();
+    await tick();
+    assert.equal(f.plugin.settings.password, "newpass");
+    assert.deepEqual(f.calls, ["save"]);
+    assert.ok(password.textContent!.includes("modal_password_notice"));
+    assert.ok(
+      !f
+        .rowFor("settings_encryptionmethod")!
+        .classList.contains("settings-encryption-method-hide")
+    );
+  });
+
+  it("toggles the password input type via the eye control", () => {
+    const f = advancedFixture();
+    const password = f.rowFor("settings_password")!;
+    f.buttonIn(password, "修改")!.click();
+    const input = password.querySelector(
+      "input[type=password]"
+    ) as HTMLInputElement;
+    const eye = password.querySelector(".rsnext-eye") as HTMLElement;
+    eye.click();
+    assert.equal(input.getAttribute("type"), "text");
+    eye.click();
+    assert.equal(input.getAttribute("type"), "password");
+  });
+
+  it("hides the moved encryption row when no password is set", () => {
+    const f = advancedFixture();
+    assert.ok(
+      f
+        .rowFor("settings_encryptionmethod")!
+        .classList.contains("settings-encryption-method-hide")
+    );
+  });
+
+  it("shows the encryption-method warning and needs confirm when a password is set", async () => {
+    const f = advancedFixture({ password: "secret" });
+    const encryption = f.rowFor("settings_encryptionmethod")!;
+    f.buttonIn(encryption, "修改")!.click();
+    const openssl = Array.from(
+      encryption.querySelectorAll("input[type=radio]")
+    ).find(
+      (r) => (r as HTMLInputElement).value === "openssl-base64"
+    ) as HTMLInputElement;
+    openssl.checked = true;
+    openssl.dispatchEvent(new f.dom.window.Event("change"));
+    await tick();
+    // warning surfaced, but nothing persisted until confirm
+    assert.equal(f.plugin.settings.encryptionMethod, "rclone-base64");
+    assert.deepEqual(f.calls, []);
+    assert.ok(
+      encryption.textContent!.includes("modal_encryptionmethod_shortdesc")
+    );
+    f.buttonIn(encryption, "确认")!.click();
+    await tick();
+    assert.equal(f.plugin.settings.encryptionMethod, "openssl-base64");
+    assert.deepEqual(f.calls, ["save"]);
+  });
+
+  it("saves an encryption-method change directly when no password is set", async () => {
+    const f = advancedFixture();
+    const encryption = f.rowFor("settings_encryptionmethod")!;
+    f.buttonIn(encryption, "修改")!.click();
+    const openssl = Array.from(
+      encryption.querySelectorAll("input[type=radio]")
+    ).find(
+      (r) => (r as HTMLInputElement).value === "openssl-base64"
+    ) as HTMLInputElement;
+    openssl.checked = true;
+    openssl.dispatchEvent(new f.dom.window.Event("change"));
+    await tick();
+    assert.equal(f.plugin.settings.encryptionMethod, "openssl-base64");
+    assert.deepEqual(f.calls, ["save"]);
   });
 
   it("absorbs the remaining advanced rows for the single page", () => {
@@ -359,6 +318,8 @@ describe("renderAdvancedSection", () => {
       }
     );
     for (const key of [
+      "settings_password",
+      "settings_encryptionmethod",
       "settings_skiplargefiles",
       "settings_enablestatusbar_info",
       "settings_resetstatusbar_time",
@@ -399,12 +360,6 @@ describe("renderAdvancedSection", () => {
     const mobile = advancedFixture({}, { desktop: false });
     assert.equal(mobile.rowFor("settings_enablestatusbar_info"), undefined);
     assert.ok(mobile.rowFor("settings_enablemobilestatusbar"));
-  });
-
-  it("hides the conflict-action row in advanced-only mode", () => {
-    const f = advancedFixture({}, { advancedOnly: true });
-    assert.ok(f.rowFor("settings_conflictaction")!.hidden);
-    assert.ok(!advancedFixture().rowFor("settings_conflictaction")!.hidden);
   });
 
   it("renders an existing keep_both conflict action as selected", () => {
@@ -495,28 +450,30 @@ describe("renderImportExportSection", () => {
     assert.ok(exportRow.querySelector("img.qrcode-img"));
   });
 
-  it("keeps only one inline editor open across basic and import/export", () => {
-    const dom = new JSDOM("<div id='basic'></div><div id='ie'></div>");
-    const basic = dom.window.document.getElementById("basic")!;
+  it("keeps only one inline editor open across advanced and import/export", () => {
+    const dom = new JSDOM("<div id='adv'></div><div id='ie'></div>");
+    const adv = dom.window.document.getElementById("adv")!;
     const ie = dom.window.document.getElementById("ie")!;
     const plugin: any = {
-      settings: { serviceType: "webdav" },
+      settings: {
+        serviceType: "webdav",
+        password: "",
+        encryptionMethod: "rclone-base64",
+        ignorePaths: [],
+        syncConfigDir: false,
+      },
       app: { vault: { getName: () => "notes", configDir: ".obsidian" } },
       manifest: { version: "1.0.0" },
       i18n: { t: (key: string) => key },
       saveSettings: async () => {},
     };
-    renderBasicSection(basic, plugin, {
-      advancedOnly: false,
-      showAutomation: true,
-      redisplay: () => {},
-    });
+    renderAdvancedSection(adv, plugin, { desktop: true });
     renderImportExportSection(ie, plugin);
     const rowIn = (root: HTMLElement, key: string) =>
       Array.from(root.querySelectorAll(".rsnext-row")).find(
         (r) => r.querySelector("label")?.textContent === key
       ) as HTMLElement;
-    const password = rowIn(basic, "settings_password");
+    const password = rowIn(adv, "settings_password");
     Array.from(password.querySelectorAll("button"))
       .find((b) => b.textContent === "修改")!
       .click();

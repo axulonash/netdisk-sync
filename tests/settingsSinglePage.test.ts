@@ -76,7 +76,53 @@ describe("single-page settings assembly", () => {
     f.cleanup();
   });
 
-  it("warns but still renders basic and records for an unsupported service", async () => {
+  it("keeps only the automation rows in 基本 and puts password/encryption in 高级 for webdav", () => {
+    const f = fixture("webdav");
+    const detail = (title: string) =>
+      Array.from(f.container.querySelectorAll("details")).find(
+        (d) => d.querySelector("summary")!.textContent === title
+      )!;
+    const basicLabels = Array.from(
+      detail("基本").querySelectorAll(".rsnext-row label")
+    ).map((l) => l.textContent);
+    assert.deepEqual(basicLabels, [
+      "settings_autorun",
+      "settings_runoncestartup",
+      "settings_synconsave",
+    ]);
+    const advancedLabels = Array.from(
+      detail("高级").querySelectorAll(".rsnext-row label")
+    ).map((l) => l.textContent);
+    assert.ok(advancedLabels.includes("settings_password"));
+    assert.ok(advancedLabels.includes("settings_encryptionmethod"));
+    f.cleanup();
+  });
+
+  it("renders no 基本 section for the netdisk services", () => {
+    for (const serviceType of ["baidu", "quark", "aliyun"]) {
+      const f = fixture(serviceType);
+      const titles = Array.from(
+        f.container.querySelectorAll("details")
+      ).map((d) => d.querySelector("summary")!.textContent);
+      assert.deepEqual(
+        titles,
+        ["连接", "高级", "同步记录"],
+        `${serviceType} section order`
+      );
+      const advanced = Array.from(f.container.querySelectorAll("details"))[1];
+      const labels = Array.from(
+        advanced.querySelectorAll(".rsnext-row label")
+      ).map((l) => l.textContent);
+      assert.ok(labels.includes("settings_password"), `${serviceType} password`);
+      assert.ok(
+        labels.includes("settings_encryptionmethod"),
+        `${serviceType} encryption`
+      );
+      f.cleanup();
+    }
+  });
+
+  it("warns but still renders the page (no 基本) for an unsupported service", async () => {
     const f = fixture("s3");
     const warning = f.container.querySelector(".rsnext-service-warning");
     assert.ok(warning);
@@ -85,9 +131,10 @@ describe("single-page settings assembly", () => {
       "当前配置的服务已不再支持，请重新选择服务"
     );
     assert.equal(f.container.querySelectorAll('[role="alert"]').length, 1);
-    assert.ok(f.container.textContent!.includes("settings_basic"));
+    assert.ok(!f.container.textContent!.includes("settings_basic"));
+    assert.equal(f.container.querySelectorAll("details").length, 3);
     await tick();
-    const records = f.container.querySelectorAll("details")[3];
+    const records = f.container.querySelectorAll("details")[2];
     assert.ok(records.textContent!.includes("仅记录同步时间"));
     f.cleanup();
   });
@@ -250,7 +297,15 @@ describe("RemotelySaveSettingTab.display() routes everything through the single 
       const f = tabFixture(serviceType);
       f.tab.display();
       assert.ok(f.container.querySelector(".rsnext-settings"), "frame root");
-      assert.equal(f.container.querySelectorAll("details").length, 4);
+      const titles = Array.from(
+        f.container.querySelectorAll("details")
+      ).map((d) => d.querySelector("summary")!.textContent);
+      assert.deepEqual(
+        titles,
+        serviceType === "webdav"
+          ? ["连接", "基本", "高级", "同步记录"]
+          : ["连接", "高级", "同步记录"]
+      );
       assert.equal(f.container.querySelector(".s3-hide"), null);
       assert.equal(f.container.querySelector(".settings-long-desc"), null);
       assert.equal(f.container.querySelector(".rsnext-service-warning"), null);
@@ -268,8 +323,8 @@ describe("RemotelySaveSettingTab.display() routes everything through the single 
       "当前配置的服务已不再支持，请重新选择服务"
     );
     assert.equal(f.container.querySelectorAll('[role="alert"]').length, 1);
-    assert.equal(f.container.querySelectorAll("details").length, 4);
-    assert.ok(f.container.textContent!.includes("settings_basic"));
+    assert.equal(f.container.querySelectorAll("details").length, 3);
+    assert.ok(!f.container.textContent!.includes("settings_basic"));
     f.tab.simpleCleanup?.();
   });
 
