@@ -83,7 +83,7 @@ export function renderAliyunConnection(
     root.append(
       el(
         "p",
-        "当前版本手机端暂不支持阿里云盘同步。请在电脑端 Obsidian 打开对应笔记库，进入设置 → remotely-save-next → 阿里云盘，扫码登录、准备同步文件夹，再开始同步。"
+        "当前版本手机端暂不支持阿里云盘同步。请在电脑端 Obsidian 打开对应笔记库，进入设置 → netdisk-sync → 阿里云盘，扫码登录、准备同步文件夹，再开始同步。"
       )
     );
     ctx.setTester(null);
@@ -139,7 +139,7 @@ export function renderAliyunConnection(
   folder.dataset.field = "remoteRoot";
   folder.value =
     plugin.settings.aliyunNative?.remoteRoot ??
-    `/remotely-save-next/${plugin.app.vault.getName()}`;
+    `/netdisk-sync/${plugin.app.vault.getName()}`;
   row(
     "同步文件夹",
     folder,

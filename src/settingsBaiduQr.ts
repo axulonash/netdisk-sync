@@ -86,7 +86,7 @@ export function renderBaiduConnection(
   directory.value =
     plugin.settings.baiduWebRemoteRoot ??
     plugin.settings.baiduNative?.remoteRoot ??
-    `/remotely-save-next/${plugin.app?.vault?.getName?.() ?? "我的笔记"}`;
+    `/netdisk-sync/${plugin.app?.vault?.getName?.() ?? "我的笔记"}`;
   const directoryLabel = el("label", "同步文件夹");
   directory.id = `baidu-root-${Math.random().toString(36).slice(2)}`;
   directoryLabel.htmlFor = directory.id;

@@ -83,7 +83,7 @@ export function renderQuarkConnection(
     root.append(
       el(
         "p",
-        "当前版本手机端暂不支持夸克同步。请在电脑端 Obsidian 打开对应笔记库，进入设置 → remotely-save-next → 夸克网盘，扫码登录、准备同步文件夹，再开始同步。"
+        "当前版本手机端暂不支持夸克同步。请在电脑端 Obsidian 打开对应笔记库，进入设置 → netdisk-sync → 夸克网盘，扫码登录、准备同步文件夹，再开始同步。"
       )
     );
     ctx.setTester(null);
@@ -139,7 +139,7 @@ export function renderQuarkConnection(
   folder.dataset.field = "remoteRoot";
   folder.value =
     plugin.settings.quarkNative?.remoteRoot ??
-    `/remotely-save-next/${plugin.app?.vault?.getName?.() ?? "我的笔记"}`;
+    `/netdisk-sync/${plugin.app?.vault?.getName?.() ?? "我的笔记"}`;
   row(
     "同步文件夹",
     folder,

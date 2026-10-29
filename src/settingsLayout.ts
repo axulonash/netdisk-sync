@@ -7,7 +7,7 @@ export const createSettingsSection = (
   title: string
 ): HTMLDivElement => {
   const details = parent.ownerDocument.createElement("details");
-  details.className = "remotely-save-next-settings-section";
+  details.className = "netdisk-sync-settings-section";
   const summary = parent.ownerDocument.createElement("summary");
   summary.textContent = title;
   const content = parent.ownerDocument.createElement("div");

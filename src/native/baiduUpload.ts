@@ -42,7 +42,7 @@ const md5 = (bytes: Uint8Array) =>
   createHash("md5").update(bytes).digest("hex");
 const formHeaders = { "Content-Type": "application/x-www-form-urlencoded" };
 const multipart = (bytes: Uint8Array) => {
-  const boundary = `remotely-save-next-${nanoid()}`;
+  const boundary = `netdisk-sync-${nanoid()}`;
   // The fixed filename keeps arbitrary remote paths out of multipart headers.
   const head = new TextEncoder().encode(
     `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="chunk.bin"\r\nContent-Type: application/octet-stream\r\n\r\n`

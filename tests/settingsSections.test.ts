@@ -498,7 +498,7 @@ function debugFixture(settings: Record<string, unknown> = {}) {
       ...settings,
     },
     app: { vault: { getName: () => "notes", configDir: ".obsidian" } },
-    manifest: { version: "1.0.0", name: "remotely-save-next" },
+    manifest: { version: "1.0.0", name: "netdisk-sync" },
     db: {},
     vaultRandomID: "vault",
     i18n: { t: (key: string) => key },

@@ -404,9 +404,9 @@ describe("Quark connection fragment", () => {
       },
       app: { vault: { getName: () => "笔记", configDir: ".obsidian" } },
       manifest: {
-        name: "remotely-save-next",
+        name: "netdisk-sync",
         version: "1.0.0",
-        id: "remotely-save-next",
+        id: "netdisk-sync",
       },
       i18n: { t: (key: string) => key },
       syncUiStatus: "尚未同步",

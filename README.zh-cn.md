@@ -1,4 +1,4 @@
-# remotely-save-next
+# netdisk-sync
 
 面向国内使用环境的 Obsidian 同步插件，重点支持 WebDAV、百度网盘、夸克网盘和阿里云盘，简化设置并改进同步稳定性。
 
@@ -25,8 +25,8 @@ npm ci --ignore-scripts
 npm run package:plugin
 ```
 
-将 `dist/remotely-save-next/` 中的 `main.js`、`manifest.json`、`styles.css` 放到专用测试仓库的
-`.obsidian/plugins/remotely-save-next/`，重启 Obsidian，在社区插件列表启用 **remotely-save-next**。
+将 `dist/netdisk-sync/` 中的 `main.js`、`manifest.json`、`styles.css` 放到专用测试仓库的
+`.obsidian/plugins/netdisk-sync/`，重启 Obsidian，在社区插件列表启用 **netdisk-sync**。
 
 第一步只验证插件能否加载、名称是否正确、设置页能否打开，不登录网盘、不执行同步。
 新插件使用独立的插件 ID、配置 URI 和本地数据库，不会自动读取原插件的配置或同步历史。

@@ -29,19 +29,19 @@
   font-family: monospace;
 }
 
-.remotely-save-next-settings-section {
+.netdisk-sync-settings-section {
   margin-block: 1em;
   border-top: 1px solid var(--background-modifier-border);
   padding-top: 0.75em;
 }
 
-.remotely-save-next-settings-section > summary {
+.netdisk-sync-settings-section > summary {
   cursor: pointer;
   font-weight: var(--font-semibold);
   padding-block: 0.5em;
 }
 
-.remotely-save-next-settings-section > summary:focus-visible {
+.netdisk-sync-settings-section > summary:focus-visible {
   outline: 2px solid var(--interactive-accent);
   outline-offset: 2px;
 }

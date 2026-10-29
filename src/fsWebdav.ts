@@ -803,7 +803,7 @@ export class FakeFsWebdav extends FakeFs {
     const destUrl = `${baseAddress}/${encodedKey}`;
     const uploadServerAddress = this.nextcloudUploadServerAddress;
     console.debug(`uploadServerAddress=${uploadServerAddress}`);
-    const tmpFolderName = `remotely-save-next-${nanoid()}`;
+    const tmpFolderName = `netdisk-sync-${nanoid()}`;
     console.debug(`tmpFolderName=${tmpFolderName}`);
 
     const clientForUpload = createClient(uploadServerAddress, {

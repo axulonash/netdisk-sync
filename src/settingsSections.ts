@@ -783,7 +783,7 @@ export function renderImportExportSection(
   let importSettingVal = "";
   const input = doc.createElement("input");
   input.type = "text";
-  input.placeholder = "obsidian://remotely-save-next?func=settings&...";
+  input.placeholder = "obsidian://netdisk-sync?func=settings&...";
   input.oninput = () => {
     importSettingVal = input.value;
   };

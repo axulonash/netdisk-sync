@@ -85,7 +85,7 @@ describe("Planned folder deletion",()=>{
  it("preserves local children created after the scan",async()=>{
   let deleted=false;
   const vault:any={adapter:{list:async()=>({files:["notes/new.md"],folders:[]}),trashSystem:async()=>{deleted=true;return true;}}};
-  const fs=new api.FakeFsLocal(vault,false,false,".obsidian","remotely-save-next",undefined,"system");
+  const fs=new api.FakeFsLocal(vault,false,false,".obsidian","netdisk-sync",undefined,"system");
   await assert.rejects(fs.rm("notes/"), (e:any)=>e.code==='plan_changed');
   assert.equal(deleted,false);
  });
@@ -148,7 +148,7 @@ describe('Complete local disk inventory',()=>{
    stat:async(path:string)=>path.replace(/\/$/,'')==='00-Inbox'?{type:'folder',size:0,mtime:10000,ctime:10000}:path===key?{type:'file',size:body.byteLength,mtime:10000,ctime:10000}:null,
    readBinary:async()=>body.slice(0),
   }};
-  const local=new api.FakeFsLocal(vault,false,false,'.obsidian','remotely-save-next',undefined,'system');
+  const local=new api.FakeFsLocal(vault,false,false,'.obsidian','netdisk-sync',undefined,'system');
   const inventory=await local.walk();assert.ok(inventory.some((e:any)=>e.key===key),'HTML file must be present in the scan');
   const plan=await api.buildSyncPlan({localEntityList:inventory,remoteEntityList:await f.encrypted.walk(),prevSyncEntityList:[],fsEncrypt:f.encrypted,settings:f.settings,triggerSource:'manual',configDir:'.obsidian'});
   assert.equal(plan[key].decision,'local_is_created_then_push');
@@ -162,7 +162,7 @@ it('does not trash a local folder when stopped during its emptiness check',async
  let release!:()=>void,entered!:()=>void,trashed=false;
  const ready=new Promise<void>(r=>entered=r),gate=new Promise<void>(r=>release=r);
  const vault:any={adapter:{list:async()=>{entered();await gate;return{files:[],folders:[]};},trashSystem:async()=>{trashed=true;return true;}}};
- const fs=new api.FakeFsLocal(vault,false,false,'.obsidian','remotely-save-next',undefined,'system');fs.beforeOperation=()=>control.checkpoint();
+ const fs=new api.FakeFsLocal(vault,false,false,'.obsidian','netdisk-sync',undefined,'system');fs.beforeOperation=()=>control.checkpoint();
  const removing=fs.rm('notes/');const result=removing.catch((error:any)=>error);
  await ready;control.stop();release();const error=await result;
  assert.equal(trashed,false);assert.ok(isSyncCancelled(error));
@@ -172,7 +172,7 @@ it('rechecks folder contents after a pause before trashing it',async()=>{
  const {SyncControl}=await import('../src/syncControl');const control=new SyncControl();let checked!:()=>void;
  const firstCheck=new Promise<void>(r=>checked=r);let checks=0,trashed=false;
  const vault:any={adapter:{list:async()=>{checks++;if(checks===1){control.pause();checked();return{files:[],folders:[]};}return{files:['notes/new.md'],folders:[]};},trashSystem:async()=>{trashed=true;return true;}}};
- const fs=new api.FakeFsLocal(vault,false,false,'.obsidian','remotely-save-next',undefined,'system');
+ const fs=new api.FakeFsLocal(vault,false,false,'.obsidian','netdisk-sync',undefined,'system');
  fs.beforeOperation=()=>control.checkpoint();fs.operationRevision=()=>control.revision;
  const result=fs.rm('notes/').catch((error:any)=>error);
  await firstCheck;control.resume();const error=await result;

@@ -12,7 +12,7 @@ import { unixTimeToStr } from "./misc";
 
 const DB_VERSION_NUMBER_IN_HISTORY = [20211114, 20220108, 20220326, 20240220];
 export const DEFAULT_DB_VERSION_NUMBER: number = 20240220;
-export const DEFAULT_DB_NAME = "remotely-save-next-db";
+export const DEFAULT_DB_NAME = "netdisk-sync-db";
 export const DEFAULT_TBL_VERSION = "schemaversion";
 export const DEFAULT_SYNC_PLANS_HISTORY = "syncplanshistory";
 export const DEFAULT_TBL_VAULT_RANDOM_ID_MAPPING = "vaultrandomidmapping";

@@ -144,7 +144,7 @@ export class AliyunClient {
     if (!this.deviceReady) {
       const sig = this.signature();
       const r = await this.send("/users/v1/users/device/create_session", {
-        deviceName: "remotely-save-next",
+        deviceName: "netdisk-sync",
         modelName: "Desktop",
         nonce: 0,
         pubKey: sig.pubKey,

@@ -1,5 +1,5 @@
 {
-  "name": "remotely-save-next",
+  "name": "netdisk-sync",
   "version": "0.2.0",
   "engines": {
     "node": ">=22.13.0"
@@ -29,7 +29,7 @@
   },
   "source": "main.ts",
   "keywords": [],
-  "author": "",
+  "author": "axulonash",
   "license": "SEE LICENSE IN LICENSE",
   "overrides": {
     "aggregate-error": {

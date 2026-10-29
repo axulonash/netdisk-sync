@@ -1,6 +1,6 @@
 # 来源与改进说明
 
-`remotely-save-next` 是面向国内使用环境独立维护的 Obsidian 同步插件。
+`netdisk-sync` 是面向国内使用环境独立维护的 Obsidian 同步插件。
 本项目基于 [Remotely Save](https://github.com/remotely-save/remotely-save) 开发，
 感谢原作者 fyears 和所有原项目贡献者。该链接用于说明来源，并非本项目的下载、赞助或支持入口。
 

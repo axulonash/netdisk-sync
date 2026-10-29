@@ -229,10 +229,10 @@ export interface RemotelySavePluginSettings {
   howToCleanEmptyFolder?: EmptyFolderCleanType;
 }
 
-export const COMMAND_URI = "remotely-save-next";
-export const COMMAND_CALLBACK = "remotely-save-next-cb";
-export const COMMAND_CALLBACK_ONEDRIVE = "remotely-save-next-cb-onedrive";
-export const COMMAND_CALLBACK_DROPBOX = "remotely-save-next-cb-dropbox";
+export const COMMAND_URI = "netdisk-sync";
+export const COMMAND_CALLBACK = "netdisk-sync-cb";
+export const COMMAND_CALLBACK_ONEDRIVE = "netdisk-sync-cb-onedrive";
+export const COMMAND_CALLBACK_DROPBOX = "netdisk-sync-cb-dropbox";
 
 export interface UriParams {
   func?: string;
