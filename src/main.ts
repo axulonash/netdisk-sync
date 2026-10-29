@@ -73,10 +73,14 @@ import { RemotelySaveSettingTab } from "./settings";
 import { DEFAULT_SERVICE_TYPE } from "./settingsLayout";
 import { SyncAlgoV3Modal } from "./syncAlgoV3Notice";
 import { SyncControl } from "./syncControl";
-import { skipUnsupportedEmptyUploads } from "./syncProgress";
+import { skipUnsupportedEmptyUploads, tooLargeSkippedFiles } from "./syncProgress";
 import { createSnapshotSaver } from "./syncSettingsSnapshot";
 import { TransferSpeed, observeTransferBytes } from "./transferSpeed";
 import { migrateWebdavDirectory } from "./webdavDirectory";
+
+// Android's requestUrl bridge base64-encodes a whole file on a 256 MB Java
+// heap, so an unbounded mobile transfer OOM-kills the process (crash 2026-10-29).
+const MOBILE_SKIP_SIZE = 20 * 1000 * 1000;
 
 const DEFAULT_SETTINGS: RemotelySavePluginSettings = {
   s3: DEFAULT_S3_CONFIG,
@@ -793,8 +797,11 @@ export default class RemotelySavePlugin extends Plugin {
                         !!this.settings.password
                       )
                     : [];
-                for (const path of skipped)
-                  activity?.onSkipped(path, "empty_file_unsupported");
+                for (const path of [
+                  ...skipped,
+                  ...tooLargeSkippedFiles(plan),
+                ])
+                  activity?.onSkipped(path);
               },
               validatePlan: (plan) => {
                 if (isBaidu) assertBaiduWebPlan(plan, !!this.settings.password);
@@ -1148,6 +1155,13 @@ export default class RemotelySavePlugin extends Plugin {
       cloneDeep(DEFAULT_SETTINGS),
       messyConfigToNormal(await this.loadData())
     );
+
+    if (Platform.isMobile) {
+      if ((this.settings.skipSizeLargerThan ?? 0) <= 0) {
+        this.settings.skipSizeLargerThan = MOBILE_SKIP_SIZE;
+      }
+      this.settings.concurrency = Math.min(this.settings.concurrency ?? 2, 2);
+    }
 
     if (this.settings.syncBookmarks === undefined) {
       this.settings.syncBookmarks = false;

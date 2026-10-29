@@ -270,8 +270,8 @@ export class ActivityTracker {
     this.record.progress!.unexecuted = plan.total;
     this.onPhase("ready");
   }
-  onSkipped(path:string,reason:'empty_file_unsupported') {
-    if(reason!=='empty_file_unsupported'||!validPath(path))return;
+  onSkipped(path: string) {
+    if (!validPath(path)) return;
     if(this.skippedSeen.has(path))return;
     this.skippedSeen.add(path);
     const paths=this.record.skippedPaths??=[];
@@ -392,7 +392,7 @@ export class ActivityTracker {
             ? "success"
             : "unchanged";
     if (error) this.record.error = safeSyncError(error);
-    else if(this.record.progress?.skipped)this.record.error=`已跳过 ${this.record.progress.skipped} 个网盘不支持的空文件，其他项目已处理。如需同步这些空文件，请先写入内容再重新同步。`;
+    else if(this.record.progress?.skipped)this.record.error=`已跳过 ${this.record.progress.skipped} 个文件（网盘不支持的空文件，或超过「跳过大于」上限），其他项目已处理。`;
     return this.record;
   }
 }

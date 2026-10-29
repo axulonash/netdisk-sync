@@ -163,7 +163,7 @@ describe("Quark sync failure messages", () => {
 describe("Planned sync activity", () => {
   it("reports skipped empty files as partial without counting them as uploaded or failed", () => {
     const tracker = new ActivityTracker("manual", "profile");
-    tracker.onSkipped("empty.md", "empty_file_unsupported");
+    tracker.onSkipped("empty.md");
     tracker.onPlan({total:1,upload:1,download:0,delete:0,createFolder:0,conflicts:0,bytes:5,unknownSizes:0});
     tracker.onTask({key:"note.md",action:"upload",bytes:5,unknownSize:false,state:"completed"});
     const record=tracker.finish();

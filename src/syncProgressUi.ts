@@ -10,9 +10,9 @@ export function progressStatus(p: SyncProgressSnapshot): string {
     return `正在扫描${side === "remote" ? "网盘" : "本地"} · 已发现 ${p.scanned[side].files} 个文件、${p.scanned[side].folders} 个文件夹`;
   }
   if (p.phase === "planning") return "正在计算需要同步的文件…";
-  if (p.phase === "ready") return p.plan?.total ? `扫描完成 · 待处理 ${p.plan.total} 项${p.skipped?` · 跳过空文件 ${p.skipped}`:""}` : p.skipped?`扫描完成 · 跳过空文件 ${p.skipped}`:"扫描完成 · 没有变化";
-  if (p.phase === "syncing") return `正在同步 · 已完成 ${p.completed} / ${p.plan?.total ?? 0} 项${p.failed ? ` · 失败 ${p.failed}` : ""}${p.skipped?` · 跳过空文件 ${p.skipped}`:""}`;
-  return `成功 ${p.completed} · 失败 ${p.failed} · 未执行 ${p.unexecuted}${p.skipped?` · 跳过空文件 ${p.skipped}`:""}`;
+  if (p.phase === "ready") return p.plan?.total ? `扫描完成 · 待处理 ${p.plan.total} 项${p.skipped?` · 跳过文件 ${p.skipped}`:""}` : p.skipped?`扫描完成 · 跳过文件 ${p.skipped}`:"扫描完成 · 没有变化";
+  if (p.phase === "syncing") return `正在同步 · 已完成 ${p.completed} / ${p.plan?.total ?? 0} 项${p.failed ? ` · 失败 ${p.failed}` : ""}${p.skipped?` · 跳过文件 ${p.skipped}`:""}`;
+  return `成功 ${p.completed} · 失败 ${p.failed} · 未执行 ${p.unexecuted}${p.skipped?` · 跳过文件 ${p.skipped}`:""}`;
 }
 
 export function createSyncProgress(status: HTMLElement, getActivity: () => SyncActivity | undefined) {

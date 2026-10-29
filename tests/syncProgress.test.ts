@@ -1,5 +1,14 @@
 import {strict as assert} from 'assert';
-import {skipUnsupportedEmptyUploads,syncFailureDiagnostic} from '../src/syncProgress';
+import {skipUnsupportedEmptyUploads,syncFailureDiagnostic,tooLargeSkippedFiles} from '../src/syncProgress';
+
+it('reports files skipped for exceeding the size limit',()=>{
+ const plan:any={
+  'big.md':{key:'big.md',decision:'local_is_created_too_large_then_do_nothing'},
+  'far.md':{key:'far.md',decision:'remote_is_created_too_large_then_do_nothing'},
+  'ok.md':{key:'ok.md',decision:'local_is_created_then_push'},
+ };
+ assert.deepEqual(tooLargeSkippedFiles(plan),['big.md','far.md']);
+});
 
 describe('network failure diagnostics',()=>{
  it('retains a safe timeout code without leaking the raw message',()=>{

@@ -36,14 +36,18 @@ export interface SyncProgressSnapshot {
   failures?: SyncFailureDiagnostic[];
 }
 
+const TOO_LARGE_DECISIONS = [
+  "local_is_created_too_large_then_do_nothing",
+  "remote_is_created_too_large_then_do_nothing",
+];
+
 // One task is one engine operation. A conflict can involve more than one
 // transfer; its total bytes are an estimate until the operation is resolved.
 export function getSyncTask(entry: MixedEntity): SyncTask | undefined {
   const decision = entry.decision ?? "";
   if (entry.key === "/$@meta" ||
       ["equal", "only_history", "folder_to_skip", "folder_existed_both_then_do_nothing", "unsupported_empty_then_skip",
-       "conflict_created_then_do_nothing", "local_is_created_too_large_then_do_nothing",
-       "remote_is_created_too_large_then_do_nothing"].includes(decision)) return;
+       "conflict_created_then_do_nothing", ...TOO_LARGE_DECISIONS].includes(decision)) return;
   let action: SyncTask["action"];
   let sizes: (number | undefined)[] = [];
   if (decision.includes("deleted")) action = "delete";
@@ -77,6 +81,16 @@ export function skipUnsupportedEmptyUploads(
     }
   }
   return skipped.sort();
+}
+
+/** Files the plan refuses to move because they exceed `skipSizeLargerThan`. */
+export function tooLargeSkippedFiles(
+  plan: Record<string, MixedEntity>
+): string[] {
+  return Object.values(plan)
+    .filter((entry) => TOO_LARGE_DECISIONS.includes(entry.decision ?? ""))
+    .flatMap((entry) => (entry.key ? [entry.key] : []))
+    .sort();
 }
 
 export function summarizeSyncPlan(entries: Record<string, MixedEntity>): SyncPlanSummary {
